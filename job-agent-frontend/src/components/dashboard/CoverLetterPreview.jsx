@@ -13,15 +13,6 @@ export function CoverLetterPreview({ coverLetterUrl }) {
         <p className="font-medium text-gray-200">Your tailored cover letters are ready.</p>
         <p className="mt-2">Download the version for each job from the dashboard cards.</p>
       </div>
-      {coverLetterUrl && (
-        <a
-          href={coverLetterUrl}
-          download
-          className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
-        >
-          Download Cover Letter
-        </a>
-      )}
     </div>
   )
 }

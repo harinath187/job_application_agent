@@ -6,18 +6,35 @@ import { agentApi } from '../api/agentApi.js'
 
 export function Home() {
   const navigate = useNavigate()
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [role, setRole] = useState('')
+  const [location, setLocation] = useState('')
   const [error, setError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
 
-  const handleFileSelect = async (file, validationError) => {
+  const handleFileSelect = (file, validationError) => {
     setError(validationError || '')
-    if (!file || validationError) return
+    if (!file || validationError) {
+      setSelectedFile(null)
+      return
+    }
 
+    setSelectedFile(file)
+  }
+
+  const handleRun = async () => {
+    if (!selectedFile || !role.trim() || !location.trim()) {
+      setError('Please upload a resume and enter both role and location.')
+      return
+    }
+
+    setError('')
     setIsProcessing(true)
 
     try {
-      const { jobReferenceId } = await agentApi.uploadResume(file)
-      navigate(`/dashboard?jobReferenceId=${jobReferenceId}`)
+      const response = await agentApi.uploadResume(selectedFile, role.trim(), location.trim())
+      const sessionId = response.jobReferenceId || response.session_id || response.sessionId
+      navigate(`/dashboard?jobReferenceId=${sessionId}`)
     } catch (uploadError) {
       setError('Upload failed. Please try again.')
     } finally {
@@ -37,8 +54,49 @@ export function Home() {
           <div className="rounded-[2rem] border border-gray-800 bg-gray-900 p-8 text-center shadow-xl shadow-black/20">
             <h2 className="text-xl font-semibold text-white">Ready to start?</h2>
             <p className="mt-2 text-sm text-gray-400">Upload a PDF resume and begin the intelligent job search pipeline.</p>
-            <div className="mt-6">
+            <div className="mt-6 space-y-6">
               <UploadBox onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+
+              {selectedFile && (
+                <p className="text-sm text-gray-300">Selected file: {selectedFile.name}</p>
+              )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-left text-sm font-medium text-gray-300">
+                  Job Title / Role
+                  <input
+                    type="text"
+                    value={role}
+                    onChange={(event) => setRole(event.target.value)}
+                    required
+                    className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
+                    placeholder="e.g. Product Manager"
+                    disabled={isProcessing}
+                  />
+                </label>
+
+                <label className="block text-left text-sm font-medium text-gray-300">
+                  Location
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(event) => setLocation(event.target.value)}
+                    required
+                    className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
+                    placeholder="e.g. New York, NY"
+                    disabled={isProcessing}
+                  />
+                </label>
+              </div>
+
+              <div className="flex justify-center">
+                <Button
+                  onClick={handleRun}
+                  disabled={!selectedFile || !role.trim() || !location.trim() || isProcessing}
+                >
+                  {isProcessing ? 'Running...' : 'Run'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

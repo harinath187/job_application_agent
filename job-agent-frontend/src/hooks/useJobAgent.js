@@ -79,12 +79,12 @@ export function JobAgentProvider({ children }) {
     }
   }
 
-  const uploadAndRun = async (file) => {
+  const startAgent = async ({ file, role, location }) => {
     try {
       setError('')
       setIsProcessing(true)
       setStatus('Parsing resume...')
-      const response = await uploadResume(file)
+      const response = await uploadResume(file, role, location)
       const session = response.session_id || response.sessionId || ''
       setSessionId(session)
       setStatus('Searching jobs...')
@@ -102,7 +102,7 @@ export function JobAgentProvider({ children }) {
       await pollJobs(session)
       return session
     } catch (err) {
-      console.error('uploadAndRun error', err)
+      console.error('startAgent error', err)
       setError('Failed to upload resume. Please try again.')
       setIsProcessing(false)
       setStatus('Upload failed')
@@ -134,7 +134,7 @@ export function JobAgentProvider({ children }) {
       status,
       isProcessing,
       error,
-      uploadAndRun,
+      startAgent,
       handleDownload
     }),
     [sessionId, jobs, status, isProcessing, error]

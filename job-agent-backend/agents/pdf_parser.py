@@ -25,7 +25,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         pdf_path: Path to the PDF resume file
     
     Returns:
-        Dictionary with keys: role (str), location (str), skills (List[str])
+        Dictionary with keys: skills (List[str])
     """
     try:
         # Extract text from PDF
@@ -38,7 +38,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         
         if not resume_text.strip():
             logger.warning(f"No text extracted from {pdf_path}")
-            return {"role": "", "location": "", "skills": []}
+            return {"skills": []}
         
         # Call Groq API to parse resume
         message = client.messages.create(
@@ -48,15 +48,13 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 {
                     "role": "user",
                     "content": f"""Analyze this resume and extract ONLY the following information in valid JSON format:
-- role: the primary job title/role from the resume
-- location: the primary location/city from the resume
 - skills: list of 5-8 key technical or professional skills mentioned
 
 Resume text:
 {resume_text}
 
 Return ONLY valid JSON with no additional text. Example format:
-{{"role": "Software Engineer", "location": "San Francisco", "skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"]}}"""
+{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"]}}"""
                 }
             ]
         )
@@ -68,17 +66,15 @@ Return ONLY valid JSON with no additional text. Example format:
         
         # Validate and set defaults
         return {
-            "role": str(extracted_data.get("role", "")),
-            "location": str(extracted_data.get("location", "")),
             "skills": extracted_data.get("skills", []) if isinstance(extracted_data.get("skills"), list) else []
         }
     
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON response from Groq: {e}")
-        return {"role": "", "location": "", "skills": []}
+        return {"skills": []}
     except Exception as e:
         logger.error(f"Error parsing resume: {e}")
-        return {"role": "", "location": "", "skills": []}
+        return {"skills": []}
 
 
 def get_resume_text(pdf_path: str) -> str:

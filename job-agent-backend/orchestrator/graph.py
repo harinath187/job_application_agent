@@ -6,9 +6,9 @@ from langgraph.graph import StateGraph, END
 from orchestrator.state import AgentState
 from agents.pdf_parser import parse_resume, get_resume_text
 from agents.scraper_agent import scrape_jobs
-from agents.tailor_agent import tailor_resume
+from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
-from utils.file_helpers import COVER_LETTERS_DIR
+from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR
 
 
 logging.basicConfig(level=logging.INFO)
@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 
 def pdf_parser_node(state: AgentState) -> AgentState:
     """
-    Node that parses the PDF resume and extracts role, location, and skills.
+    Node that parses the PDF resume and extracts skills.
     
     Args:
         state: Current agent state
     
     Returns:
-        Updated state with extracted resume data
+        Updated state with extracted resume skills
     """
     logger.info(f"Processing PDF: {state['resume_path']}")
     
@@ -33,11 +33,9 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     
     # Parse resume to extract structured data
     parsed_data = parse_resume(state["resume_path"])
-    state["extracted_role"] = parsed_data.get("role", "")
-    state["extracted_location"] = parsed_data.get("location", "")
     state["extracted_skills"] = parsed_data.get("skills", [])
     
-    logger.info(f"Extracted: Role={state['extracted_role']}, Location={state['extracted_location']}, Skills={state['extracted_skills']}")
+    logger.info(f"Extracted skills={state['extracted_skills']} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
     
     return state
 
@@ -67,13 +65,13 @@ def scraper_node(state: AgentState) -> AgentState:
 
 def tailor_node(state: AgentState) -> AgentState:
     """
-    Node that tailors resume for each scraped job.
+    Node that tailors resume for each scraped job and saves tailored versions.
     
     Args:
         state: Current agent state
     
     Returns:
-        Updated state with tailored resumes
+        Updated state with tailored resumes and their file paths
     """
     tailored_resumes = []
     resume_text = state.get("resume_text", "")
@@ -88,9 +86,18 @@ def tailor_node(state: AgentState) -> AgentState:
             skills=skills
         )
         
+        # Save tailored resume to disk
+        tailored_resume_path = save_tailored_resume(
+            resume_text=resume_text,
+            tailored_data=tailored_data,
+            job=job,
+            output_dir=str(RESUMES_DIR)
+        )
+        
         tailored_resumes.append({
             "job": job,
-            "tailored": tailored_data
+            "tailored": tailored_data,
+            "resume_path": tailored_resume_path
         })
     
     state["tailored_resumes"] = tailored_resumes

@@ -13,15 +13,6 @@ export function ResumePreview({ resumeUrl }) {
         <p className="font-medium text-gray-200">Your tailored resume is ready.</p>
         <p className="mt-2">Use the download buttons in the job card to save it locally.</p>
       </div>
-      {resumeUrl && (
-        <a
-          href={resumeUrl}
-          download
-          className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500"
-        >
-          Download Generated Resume
-        </a>
-      )}
     </div>
   )
 }

@@ -80,7 +80,7 @@ def validate_file_path(filepath: str) -> bool:
     Validate that a file path is safe and doesn't attempt path traversal.
     
     Args:
-        filepath: File path to validate
+        filepath: File path to validate (relative to OUTPUTS_DIR)
     
     Returns:
         True if safe, False otherwise
@@ -89,12 +89,34 @@ def validate_file_path(filepath: str) -> bool:
     if ".." in filepath:
         return False
     
-    # Resolve to absolute path and check it's within outputs dir
+    # Join with OUTPUTS_DIR and validate it's still within outputs
     try:
-        abs_path = Path(filepath).resolve()
+        full_path = OUTPUTS_DIR / filepath
+        abs_path = full_path.resolve()
         outputs_abs = OUTPUTS_DIR.resolve()
         # Check if the resolved path is within outputs directory
         abs_path.relative_to(outputs_abs)
         return True
     except (ValueError, RuntimeError):
         return False
+
+
+def get_relative_path(filepath: str) -> str:
+    """
+    Convert an absolute file path to a relative path from OUTPUTS_DIR.
+    Returns just the filename if the file is in a direct subdirectory of OUTPUTS_DIR.
+    
+    Args:
+        filepath: Absolute file path
+    
+    Returns:
+        Relative path from OUTPUTS_DIR
+    """
+    try:
+        abs_path = Path(filepath).resolve()
+        outputs_abs = OUTPUTS_DIR.resolve()
+        relative = abs_path.relative_to(outputs_abs)
+        return str(relative).replace("\\", "/")  # Use forward slashes for web paths
+    except (ValueError, RuntimeError):
+        # If not within OUTPUTS_DIR, return filename only
+        return Path(filepath).name

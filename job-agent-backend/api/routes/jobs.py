@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from utils.db import get_jobs_by_session
+from utils.db import get_job_by_id, get_jobs_by_session
 
 
 logging.basicConfig(level=logging.INFO)
@@ -83,3 +83,43 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
     except Exception as e:
         logger.error(f"Error retrieving jobs for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Error retrieving jobs")
+
+
+@router.get("/jobs/{job_id}")
+async def get_job_detail(job_id: int) -> JSONResponse:
+    """
+    Retrieve a single job by its ID.
+    
+    Args:
+        job_id: Job identifier
+    
+    Returns:
+        JSON object containing the job data
+    """
+    try:
+        job = get_job_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "job": {
+                    "id": job.get("id"),
+                    "session_id": job.get("session_id"),
+                    "title": job.get("title"),
+                    "company": job.get("company"),
+                    "location": job.get("location"),
+                    "job_url": job.get("job_url"),
+                    "description": job.get("description", ""),
+                    "resume_path": job.get("resume_path"),
+                    "cover_letter_path": job.get("cover_letter_path"),
+                    "status": job.get("status", "pending")
+                }
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving job")

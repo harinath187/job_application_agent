@@ -118,6 +118,24 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
+    """
+    Retrieve a specific job by its ID.
+    
+    Args:
+        job_id: Job identifier
+    
+    Returns:
+        Job dictionary or None if not found
+    """
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
 def update_job_status(job_id: int, status: str, resume_path: str = None, cover_letter_path: str = None) -> None:
     """
     Update job status and file paths.

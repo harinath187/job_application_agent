@@ -59,9 +59,17 @@ export function Dashboard() {
     }
   }, [jobReferenceId, navigate])
 
-  const handleDownload = async (url) => {
+  const handleDownload = async (filename) => {
     try {
-      await agentApi.downloadFile(url)
+      const blob = await agentApi.downloadFile(filename)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename.split('/').pop() || 'download'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
     } catch {
       setError('Download failed. Please try again.')
     }

@@ -24,6 +24,22 @@ export function JobDetail() {
     fetchJob()
   }, [jobId])
 
+  const handleDownload = async (filename) => {
+    try {
+      const blob = await agentApi.downloadFile(filename)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Unable to download file.')
+    }
+  }
+
   if (error) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-10 text-sm text-red-300">{error}</div>
@@ -67,14 +83,14 @@ export function JobDetail() {
             </div>
           </div>
           {job.resume_path && (
-            <a href={job.resume_path} download className="inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500">
+            <button onClick={() => handleDownload(job.resume_path)} className="inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500">
               Download Resume
-            </a>
+            </button>
           )}
           {job.cover_letter_path && (
-            <a href={job.cover_letter_path} download className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">
+            <button onClick={() => handleDownload(job.cover_letter_path)} className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">
               Download Cover Letter
-            </a>
+            </button>
           )}
         </section>
       </div>

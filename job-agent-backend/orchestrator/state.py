@@ -10,9 +10,9 @@ class AgentState(TypedDict):
     """
     resume_path: str  # Path to uploaded PDF resume
     resume_text: str  # Extracted text from resume
-    extracted_role: str  # Extracted job role/title from resume
-    extracted_location: str  # Extracted location from resume
+    extracted_role: str  # Job role/title provided by the user
+    extracted_location: str  # Location provided by the user
     extracted_skills: List[str]  # Extracted skills from resume (5-8 items)
     jobs: List[dict]  # List of scraped jobs
-    tailored_resumes: List[dict]  # List of tailored resume/job pairs
+    tailored_resumes: List[dict]  # List of tailored resume data and file paths
     cover_letter_paths: List[str]  # List of generated cover letter file paths
