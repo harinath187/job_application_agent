@@ -69,7 +69,7 @@ def run_agent_pipeline(session_id: str, pdf_path: str) -> None:
 
 
 @router.post("/upload")
-async def upload_resume(file: UploadFile = File(...), background_tasks: BackgroundTasks = None) -> JSONResponse:
+async def upload_resume(background_tasks: BackgroundTasks, file: UploadFile = File(...)) -> JSONResponse:
     """
     Upload a resume PDF and trigger the agent pipeline.
     
@@ -99,11 +99,7 @@ async def upload_resume(file: UploadFile = File(...), background_tasks: Backgrou
         insert_session(session_id, "processing")
         
         # Add background task to run pipeline
-        if background_tasks:
-            background_tasks.add_task(run_agent_pipeline, session_id, pdf_path)
-        else:
-            # Fallback: run synchronously (not ideal for production)
-            run_agent_pipeline(session_id, pdf_path)
+        background_tasks.add_task(run_agent_pipeline, session_id, pdf_path)
         
         logger.info(f"Created session {session_id} for resume upload")
         

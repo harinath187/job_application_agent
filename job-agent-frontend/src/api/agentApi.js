@@ -13,11 +13,7 @@ async function uploadResume(file) {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    })
+    const response = await axios.post(`${API_BASE_URL}/api/upload`, formData)
 
     return response.data
   } catch (error) {

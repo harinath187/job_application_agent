@@ -6,7 +6,7 @@ const variantStyles = {
   danger: 'bg-red-600 hover:bg-red-700 text-white'
 }
 
-export function Button({ label, onClick, variant = 'primary', disabled, loading, icon, type = 'button' }) {
+export function Button({ label, children, onClick, variant = 'primary', disabled, loading, icon, type = 'button' }) {
   const baseStyles = 'inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500'
   const disabledStyles = disabled ? 'opacity-50 cursor-not-allowed' : ''
   const styleClass = `${baseStyles} ${variantStyles[variant] || variantStyles.primary} ${disabledStyles}`
@@ -21,7 +21,7 @@ export function Button({ label, onClick, variant = 'primary', disabled, loading,
       ) : (
         <>
           {icon && <span className="mr-2">{icon}</span>}
-          {label}
+          {label || children}
         </>
       )}
     </button>
@@ -29,7 +29,7 @@ export function Button({ label, onClick, variant = 'primary', disabled, loading,
 }
 
 Button.propTypes = {
-  label: PropTypes.string.isRequired,
+  label: PropTypes.string,
   onClick: PropTypes.func,
   variant: PropTypes.oneOf(['primary', 'secondary', 'danger']),
   disabled: PropTypes.bool,

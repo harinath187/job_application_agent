@@ -14,11 +14,9 @@ export function Home() {
     if (!file || validationError) return
 
     setIsProcessing(true)
-    const formData = new FormData()
-    formData.append('resume', file)
 
     try {
-      const { jobReferenceId } = await agentApi.uploadResume(formData)
+      const { jobReferenceId } = await agentApi.uploadResume(file)
       navigate(`/dashboard?jobReferenceId=${jobReferenceId}`)
     } catch (uploadError) {
       setError('Upload failed. Please try again.')
