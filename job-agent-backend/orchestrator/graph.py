@@ -34,8 +34,9 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     # Parse resume to extract structured data
     parsed_data = parse_resume(state["resume_path"])
     state["extracted_skills"] = parsed_data.get("skills", [])
+    state["extracted_experience_years"] = parsed_data.get("experience_years", 0)
     
-    logger.info(f"Extracted skills={state['extracted_skills']} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
+    logger.info(f"Extracted skills={state['extracted_skills']} experience_years={state['extracted_experience_years']} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
     
     return state
 
@@ -55,7 +56,8 @@ def scraper_node(state: AgentState) -> AgentState:
     
     logger.info(f"Scraping jobs for: {role} in {location}")
     
-    jobs = scrape_jobs(role=role, location=location)
+    experience_years = state.get("extracted_experience_years", 0)
+    jobs = scrape_jobs(role=role, location=location, candidate_experience_years=experience_years)
     state["jobs"] = jobs
     
     logger.info(f"Found {len(jobs)} jobs")

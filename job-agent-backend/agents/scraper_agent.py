@@ -27,22 +27,23 @@ REQUEST_DELAY = 1.5
 def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
     role = state.get("extracted_role", "").strip()
     location = state.get("extracted_location", "").strip()
+    experience_years = state.get("extracted_experience_years", 0)
     if not role:
         return {**state, "jobs": []}
 
-    jobs = _fetch_jobs(f"{role} {location}".strip(), wanted=MAX_RESULTS)
+    jobs = _fetch_jobs(f"{role} {location}".strip(), wanted=MAX_RESULTS, candidate_experience_years=experience_years)
     logger.info("Fetched %s jobs for %s in %s", len(jobs), role, location)
     return {**state, "jobs": jobs}
 
 
-def scrape_jobs(role: str, location: str) -> list[dict]:
+def scrape_jobs(role: str, location: str, candidate_experience_years: int = 999) -> list[dict]:
     query = f"{role.strip()} {location.strip()}".strip()
     if not query:
         return []
-    return _fetch_jobs(query, wanted=MAX_RESULTS)
+    return _fetch_jobs(query, wanted=MAX_RESULTS, candidate_experience_years=candidate_experience_years)
 
 
-def _fetch_jobs(query: str, wanted: int) -> list[dict]:
+def _fetch_jobs(query: str, wanted: int, candidate_experience_years: int = 999) -> list[dict]:
     collected = []
     seen_keys = set()
     next_page_token = None
@@ -64,7 +65,7 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
 
         for raw in data.get("jobs_results", []):
             job = _normalise(raw)
-            if _is_usable(job, seen_keys):
+            if _is_usable(job, seen_keys, candidate_experience_years):
                 collected.append(job)
             if len(collected) >= MAX_POOL_SIZE:
                 break
@@ -93,30 +94,59 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
 
 
 def _normalise(raw: dict) -> dict:
+    import re
+    
     apply_options = raw.get("apply_options", [])
     url = apply_options[0].get("link", "") if apply_options else ""
+    description = raw.get("description", "").strip()
+    
+    # Extract experience requirement from job description
+    required_experience = None
+    if description:
+        patterns = [
+            r"(\d+)\+?\s*(?:to\s+\d+)?\s*years",
+            r"minimum\s+(\d+)\s*years",
+            r"(\d+)\s*years?\s*(?:of\s+|experience)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, description, re.IGNORECASE)
+            if match:
+                try:
+                    required_experience = int(match.group(1))
+                    break
+                except (ValueError, IndexError):
+                    continue
+    
     return {
         "title": raw.get("title", "").strip(),
         "company": raw.get("company_name", "").strip(),
         "location": raw.get("location", "").strip(),
-        "description": raw.get("description", "").strip(),
+        "description": description,
         "url": url,
         "job_url": url,
         "source": "google_jobs",
         "job_id": raw.get("job_id", ""),
+        "required_experience_years": required_experience,
     }
 
 
-def _is_usable(job: dict, seen_keys: set) -> bool:
+def _is_usable(job: dict, seen_keys: set, candidate_experience_years: int = 999) -> bool:
     key = (job["title"].lower(), job["company"].lower())
     if key in seen_keys:
         return False
     seen_keys.add(key)
-    return (
-        bool(job["title"])
-        and bool(job["company"])
-        and len(job["description"]) >= MIN_DESCRIPTION_LENGTH
-    )
+    
+    # Basic checks
+    if not (bool(job["title"]) and bool(job["company"]) and len(job["description"]) >= MIN_DESCRIPTION_LENGTH):
+        return False
+    
+    # Experience level check: filter out jobs requiring significantly more experience
+    required_experience = job.get("required_experience_years")
+    if required_experience is not None and required_experience > candidate_experience_years + 2:
+        logger.info(f"Filtering out {job['title']} at {job['company']}: requires {required_experience} years, candidate has {candidate_experience_years}")
+        return False
+    
+    return True
 
 
 if __name__ == "__main__":

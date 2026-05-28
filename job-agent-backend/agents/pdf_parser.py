@@ -49,12 +49,13 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                     "role": "user",
                     "content": f"""Analyze this resume and extract ONLY the following information in valid JSON format:
 - skills: list of 5-8 key technical or professional skills mentioned
+- experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
 
 Resume text:
 {resume_text}
 
 Return ONLY valid JSON with no additional text. Example format:
-{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"]}}"""
+{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"], "experience_years": 5}}"""
                 }
             ]
         )
@@ -65,16 +66,23 @@ Return ONLY valid JSON with no additional text. Example format:
         extracted_data = json.loads(response_text)
         
         # Validate and set defaults
+        experience_years = extracted_data.get("experience_years", 0)
+        try:
+            experience_years = int(experience_years) if experience_years else 0
+        except (ValueError, TypeError):
+            experience_years = 0
+        
         return {
-            "skills": extracted_data.get("skills", []) if isinstance(extracted_data.get("skills"), list) else []
+            "skills": extracted_data.get("skills", []) if isinstance(extracted_data.get("skills"), list) else [],
+            "experience_years": experience_years
         }
     
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON response from Groq: {e}")
-        return {"skills": []}
+        return {"skills": [], "experience_years": 0}
     except Exception as e:
         logger.error(f"Error parsing resume: {e}")
-        return {"skills": []}
+        return {"skills": [], "experience_years": 0}
 
 
 def get_resume_text(pdf_path: str) -> str:

@@ -4,12 +4,16 @@ Tailor Agent - Tailors resume content to match job requirements using Groq LLM.
 import json
 import logging
 import os
+import re
 from pathlib import Path
-from groq import Groq
-from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from typing import Dict, List, Any
+
+from groq import Groq
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from reportlab.lib.utils import simpleSplit
+from reportlab.pdfgen import canvas
+
 from utils.file_helpers import sanitise_filename
 
 
@@ -103,9 +107,44 @@ Return ONLY valid JSON with no additional text. Example format:
         }
 
 
+def _extract_candidate_name(resume_text: str) -> str:
+    """Extract a candidate name from the resume text."""
+    for line in resume_text.splitlines():
+        cleaned = line.strip()
+        if not cleaned:
+            continue
+        if "@" in cleaned or "http" in cleaned.lower() or re.search(r"\d", cleaned):
+            continue
+        return cleaned
+    return "Candidate"
+
+
+def _extract_fallback_summary(resume_text: str) -> str:
+    """Extract first substantial paragraph (>50 chars) from resume as fallback summary."""
+    for line in resume_text.splitlines():
+        cleaned = line.strip()
+        if len(cleaned) > 50:
+            return cleaned
+    return ""
+
+
+def _draw_wrapped_text(c: canvas.Canvas, text: str, x: float, y: float, max_width: float, font_name: str, font_size: int, leading: int) -> float:
+    """Draw wrapped text on the PDF canvas and return the new Y position."""
+    lines = simpleSplit(text, font_name, font_size, max_width)
+    for line in lines:
+        c.drawString(x, y, line)
+        y -= leading
+    return y
+
+
+def _start_new_page(c: canvas.Canvas) -> float:
+    c.showPage()
+    return letter[1] - inch
+
+
 def save_tailored_resume(resume_text: str, tailored_data: Dict[str, Any], job: Dict[str, Any], output_dir: str) -> str:
     """
-    Save a tailored resume as a DOCX file.
+    Save a tailored resume as a PDF file.
     
     Args:
         resume_text: Original resume text
@@ -117,53 +156,102 @@ def save_tailored_resume(resume_text: str, tailored_data: Dict[str, Any], job: D
         Full file path to the saved tailored resume
     """
     try:
-        # Create .docx document
-        doc = Document()
-        
-        # Add title
+        candidate_name = _extract_candidate_name(resume_text)
         company = job.get("company", "Company")
         title = job.get("title", "Position")
-        doc.add_heading(f"Resume - {title} at {company}", 0)
-        
-        # Add professional summary
-        if tailored_data.get("rewritten_summary"):
-            doc.add_heading("Professional Summary", level=1)
-            doc.add_paragraph(tailored_data.get("rewritten_summary"))
-        
-        # Add skills section
-        if tailored_data.get("revised_skills"):
-            doc.add_heading("Key Skills", level=1)
-            skills_text = ", ".join(tailored_data.get("revised_skills", []))
-            doc.add_paragraph(skills_text)
-        
-        # Add experience highlights
-        if tailored_data.get("bullet_rewrites"):
-            doc.add_heading("Experience Highlights", level=1)
-            for bullet in tailored_data.get("bullet_rewrites", []):
-                p = doc.add_paragraph(bullet, style="List Bullet")
-                p.alignment = WD_PARAGRAPH_ALIGNMENT.LEFT
-        
-        # Add original resume content for reference
-        doc.add_heading("Full Resume", level=1)
-        for paragraph_text in resume_text.split("\n"):
-            if paragraph_text.strip():
-                doc.add_paragraph(paragraph_text.strip())
-        
-        # Sanitise filename
+
         sanitised_company = sanitise_filename(company)
         sanitised_title = sanitise_filename(title)
-        filename = f"{sanitised_company}_{sanitised_title}_tailored_resume.docx"
-        
-        # Ensure output directory exists
+        filename = f"resume_{sanitised_title}_{sanitised_company}.pdf"
+
         output_path = Path(output_dir) / filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        c = canvas.Canvas(str(output_path), pagesize=letter)
+        width, height = letter
+        margin = inch
+        y = height - margin
+
+        c.setFont("Helvetica-Bold", 24)
+        c.drawString(margin, y, candidate_name)
+        y -= 36
+
+        def ensure_space(required_space: float, current_y: float) -> float:
+            if current_y < margin + required_space:
+                current_y = _start_new_page(c)
+            return current_y
+
+        # Professional Summary (with fallback to extracted text if empty)
+        summary_text = tailored_data.get("rewritten_summary", "")
+        if not summary_text or not isinstance(summary_text, str):
+            summary_text = _extract_fallback_summary(resume_text)
         
-        # Save document
-        doc.save(str(output_path))
-        
+        if summary_text:
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(margin, y, "Professional Summary")
+            y -= 20
+            c.setFont("Helvetica", 11)
+            y = ensure_space(40, y)
+            y = _draw_wrapped_text(c, summary_text, margin, y, width - 2 * margin, "Helvetica", 11, 14)
+            y -= 16
+
+        # Skills (only if non-empty)
+        revised_skills = tailored_data.get("revised_skills", [])
+        if revised_skills and isinstance(revised_skills, list) and len(revised_skills) > 0:
+            y = ensure_space(40, y)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(margin, y, "Skills")
+            y -= 20
+            c.setFont("Helvetica", 11)
+            skills_text = ", ".join(str(skill) for skill in revised_skills)
+            y = ensure_space(40, y)
+            y = _draw_wrapped_text(c, skills_text, margin, y, width - 2 * margin, "Helvetica", 11, 14)
+            y -= 16
+
+        # Key Experience Highlights (only if non-empty)
+        bullet_rewrites = tailored_data.get("bullet_rewrites", [])
+        if bullet_rewrites and isinstance(bullet_rewrites, list) and len(bullet_rewrites) > 0:
+            y = ensure_space(40, y)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(margin, y, "Key Experience Highlights")
+            y -= 20
+            c.setFont("Helvetica", 11)
+            for bullet in bullet_rewrites:
+                y = ensure_space(40, y)
+                bullet_lines = simpleSplit(str(bullet), "Helvetica", 11, width - 2 * margin - 20)
+                for index, line in enumerate(bullet_lines):
+                    if index == 0:
+                        c.drawString(margin, y, "•")
+                        c.drawString(margin + 14, y, line)
+                    else:
+                        c.drawString(margin + 14, y, line)
+                    y -= 14
+                y -= 6
+
+        # Divider line
+        y = ensure_space(30, y)
+        c.setLineWidth(0.5)
+        c.line(margin, y, width - margin, y)
+        y -= 22
+
+        # Full Original Resume (always included)
+        y = ensure_space(40, y)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(margin, y, "Full Original Resume")
+        y -= 20
+        c.setFont("Helvetica", 11)
+
+        for paragraph_text in resume_text.splitlines():
+            if not paragraph_text.strip():
+                y -= 12
+                continue
+            y = ensure_space(28, y)
+            y = _draw_wrapped_text(c, paragraph_text.strip(), margin, y, width - 2 * margin, "Helvetica", 11, 14)
+            y -= 10
+
+        c.save()
         logger.info(f"Generated tailored resume: {output_path}")
         return str(output_path)
-    
     except Exception as e:
         logger.error(f"Error saving tailored resume: {e}")
         return ""
