@@ -118,6 +118,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
     """
     cover_letter_paths = []
     summary = state.get("resume_text", "")[:500]  # Use resume excerpt as summary
+    skills = state.get("extracted_skills", [])  # Get extracted skills from state
     
     for tailored_item in state.get("tailored_resumes", []):
         job = tailored_item.get("job", {})
@@ -126,6 +127,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
         cover_letter_path = generate_cover_letter(
             job=job,
             summary=summary,
+            skills=skills,
             output_dir=str(COVER_LETTERS_DIR)
         )
         

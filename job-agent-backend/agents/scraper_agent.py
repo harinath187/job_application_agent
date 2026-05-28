@@ -5,6 +5,7 @@ import logging
 import json
 import os
 import time
+import random
 from typing import Any
 
 import requests
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 SERPAPI_URL = "https://serpapi.com/search"
-MAX_RESULTS = 10
+MAX_RESULTS = 10  # Final number of random jobs to return
+MAX_POOL_SIZE = 50  # Collect up to 50 jobs, then randomly select from them
 MIN_DESC_LEN = 80
 REQUEST_DELAY = 1.5
 
@@ -44,7 +46,8 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
     collected = []
     next_page_token = None
 
-    while len(collected) < wanted:
+    # Collect a larger pool of jobs (up to MAX_POOL_SIZE)
+    while len(collected) < MAX_POOL_SIZE:
         params = {
             "engine": "google_jobs",
             "q": query,
@@ -62,7 +65,7 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
             job = _normalise(raw)
             if _is_usable(job):
                 collected.append(job)
-            if len(collected) >= wanted:
+            if len(collected) >= MAX_POOL_SIZE:
                 break
 
         next_page_token = data.get("serpapi_pagination", {}).get("next_page_token")
@@ -70,6 +73,10 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
             break
         time.sleep(REQUEST_DELAY)
 
+    # Randomly select 'wanted' jobs from the collected pool
+    if len(collected) > wanted:
+        return random.sample(collected, wanted)
+    
     return collected[:wanted]
 
 

@@ -21,41 +21,45 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 
 
-def generate_cover_letter(job: Dict[str, Any], summary: str, output_dir: str) -> str:
+def generate_cover_letter(job: Dict[str, Any], summary: str, skills: list, output_dir: str) -> str:
     """
     Generate a professional cover letter for a job posting.
     
     Args:
         job: Job dictionary with keys: title, company, location, description, job_url
         summary: Candidate's professional summary/background
+        skills: List of candidate's extracted skills
         output_dir: Directory to save the cover letter
     
     Returns:
         Full file path to the generated cover letter (.docx file)
     """
     try:
-        # Call Groq API to generate cover letter
-        prompt = f"""Write a concise, professional cover letter (under 250 words, 3 paragraphs) for a job application.
-
-Job Information:
-- Title: {job.get('title', '')}
-- Company: {job.get('company', '')}
-- Description: {job.get('description', '')}
-
-Candidate Summary:
-{summary}
-
-Requirements:
-- Keep it professional and compelling
-- 3 paragraphs only
-- Under 250 words total
-- Start with an introduction mentioning the position and company
-- Middle paragraph highlighting relevant qualifications
-- Closing paragraph expressing enthusiasm
-
-Return ONLY the cover letter text with no additional formatting or explanation."""
+        # Trim job description to avoid token waste
+        job_description_snippet = job.get('description', '')[:800]
         
-        message = client.messages.create(
+        # Call Groq API to generate cover letter
+        prompt = f"""You are an expert career coach writing a tailored cover letter.
+
+Job Details:
+- Position: {job.get('title', '')}
+- Company: {job.get('company', '')}
+- Description: {job_description_snippet}
+
+Candidate Profile:
+- Summary: {summary}
+- Key Skills: {', '.join(skills)}
+
+Instructions:
+- Write exactly 3 paragraphs, under 250 words total
+- Paragraph 1: Open with the specific role and company; show genuine interest
+- Paragraph 2: Connect 2–3 of the candidate's skills directly to the job description's requirements
+- Paragraph 3: Close with a confident call to action — invite an interview, no hollow phrases like "I look forward to hearing from you"
+- Tone: confident, professional, human — avoid buzzwords like "passionate", "dynamic", or "synergy"
+- Do NOT fabricate any experience or skills not present in the candidate profile
+- Return ONLY the cover letter text. No subject line, no salutation header, no extra commentary."""
+        
+        message = client.chat.completions.create(
             model="llama3-8b-8192",
             max_tokens=1500,
             messages=[
