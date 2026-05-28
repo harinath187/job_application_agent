@@ -35,6 +35,9 @@ def tailor_resume(resume_text: str, job: Dict[str, Any], skills: List[str]) -> D
         bullet_rewrites (List[str])
     """
     try:
+        # Truncate job description to 800 characters for prompt efficiency
+        job_description_snippet = job.get('description', '')[:800]
+        
         # Call Groq API to tailor resume
         prompt = f"""You are a professional resume writer. Tailor the following resume to match the job posting.
 
@@ -43,7 +46,7 @@ IMPORTANT: Do NOT fabricate experience or skills. Only rewrite existing content 
 Job Title: {job.get('title', '')}
 Company: {job.get('company', '')}
 Job Description:
-{job.get('description', '')}
+{job_description_snippet}
 
 Current Resume:
 {resume_text}
@@ -52,8 +55,12 @@ Current Extracted Skills: {', '.join(skills)}
 
 Provide a JSON response with:
 1. rewritten_summary: A 2-3 sentence professional summary tailored to this job (emphasizing relevant background)
-2. revised_skills: A list of relevant skills from the resume and provided skills, prioritized for this role (5-8 items)
-3. bullet_rewrites: Top 3 experience bullets rewritten to match job requirements (only reword existing experience, don't add new ones)
+2. revised_skills: A list of relevant skills from the resume and provided skills, prioritized for this role (5-8 items). Only include skills that appear in either the Current Resume text or the Current Extracted Skills list. Do not add skills not present in either source.
+3. bullet_rewrites: Identify the 3 experience bullets from the resume most relevant to this job, then rewrite each one to better match the job description's language — without changing the underlying achievement or adding new experience.
+
+IMPORTANT: Mirror the exact keywords and phrases from the job description where they honestly reflect the candidate's experience. This improves ATS compatibility.
+
+If there are fewer than 3 experience bullets in the resume, return however many exist. Never return null for any field — use an empty list [] if needed.
 
 Return ONLY valid JSON with no additional text. Example format:
 {{"rewritten_summary": "...", "revised_skills": [...], "bullet_rewrites": [...]}}"""

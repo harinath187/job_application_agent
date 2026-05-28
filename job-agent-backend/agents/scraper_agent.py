@@ -18,9 +18,9 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 SERPAPI_URL = "https://serpapi.com/search"
-MAX_RESULTS = 10  # Final number of random jobs to return
-MAX_POOL_SIZE = 50  # Collect up to 50 jobs, then randomly select from them
-MIN_DESC_LEN = 80
+MAX_POOL_SIZE = 50
+MAX_RESULTS = 10
+MIN_DESCRIPTION_LENGTH = 200
 REQUEST_DELAY = 1.5
 
 
@@ -44,6 +44,7 @@ def scrape_jobs(role: str, location: str) -> list[dict]:
 
 def _fetch_jobs(query: str, wanted: int) -> list[dict]:
     collected = []
+    seen_keys = set()
     next_page_token = None
 
     # Collect a larger pool of jobs (up to MAX_POOL_SIZE)
@@ -63,7 +64,7 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
 
         for raw in data.get("jobs_results", []):
             job = _normalise(raw)
-            if _is_usable(job):
+            if _is_usable(job, seen_keys):
                 collected.append(job)
             if len(collected) >= MAX_POOL_SIZE:
                 break
@@ -73,9 +74,20 @@ def _fetch_jobs(query: str, wanted: int) -> list[dict]:
             break
         time.sleep(REQUEST_DELAY)
 
-    # Randomly select 'wanted' jobs from the collected pool
+    # Weighted random selection based on SerpApi ranking (higher ranked = higher probability)
     if len(collected) > wanted:
-        return random.sample(collected, wanted)
+        weights = [max(1, len(collected) - idx) for idx in range(len(collected))]
+        selected = random.choices(collected, weights=weights, k=wanted)
+        # Deduplicate the selected jobs
+        deduped = []
+        dedup_keys = set()
+        for job in selected:
+            key = (job["title"].lower(), job["company"].lower())
+            if key not in dedup_keys:
+                dedup_keys.add(key)
+                deduped.append(job)
+        # Ensure we have exactly MAX_RESULTS jobs
+        return deduped[:MAX_RESULTS]
     
     return collected[:wanted]
 
@@ -95,11 +107,15 @@ def _normalise(raw: dict) -> dict:
     }
 
 
-def _is_usable(job: dict) -> bool:
+def _is_usable(job: dict, seen_keys: set) -> bool:
+    key = (job["title"].lower(), job["company"].lower())
+    if key in seen_keys:
+        return False
+    seen_keys.add(key)
     return (
         bool(job["title"])
         and bool(job["company"])
-        and len(job["description"]) >= MIN_DESC_LEN
+        and len(job["description"]) >= MIN_DESCRIPTION_LENGTH
     )
 
 
