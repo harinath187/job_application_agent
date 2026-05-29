@@ -69,8 +69,8 @@ If there are fewer than 3 experience bullets in the resume, return however many 
 Return ONLY valid JSON with no additional text. Example format:
 {{"rewritten_summary": "...", "revised_skills": [...], "bullet_rewrites": [...]}}"""
         
-        message = client.messages.create(
-            model="llama3-8b-8192",
+        message = client.chat.completions.create(  # FIXED: Use Groq chat completions API.
+            model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
             max_tokens=1500,
             messages=[
                 {
@@ -80,7 +80,7 @@ Return ONLY valid JSON with no additional text. Example format:
             ]
         )
         
-        response_text = message.content[0].text.strip()
+        response_text = message.choices[0].message.content.strip()  # FIXED: Read chat completion response content.
         
         # Parse JSON response
         tailored_data = json.loads(response_text)

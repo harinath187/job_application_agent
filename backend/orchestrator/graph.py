@@ -2,6 +2,7 @@
 LangGraph orchestrator that coordinates all agents in the job application pipeline.
 """
 import logging
+import time  # FIXED: Add delay support for Groq rate limit protection.
 from langgraph.graph import StateGraph, END
 from orchestrator.state import AgentState
 from agents.pdf_parser import parse_resume, get_resume_text
@@ -110,7 +111,8 @@ def tailor_node(state: AgentState) -> AgentState:
 
 def cover_letter_node(state: AgentState) -> AgentState:
     """
-    Node that generates cover letters for each job.
+    Node that generates tailored cover letters for each job.
+    Uses the candidate's skills and tailored resume summary for specificity.
     
     Args:
         state: Current agent state
@@ -119,22 +121,32 @@ def cover_letter_node(state: AgentState) -> AgentState:
         Updated state with cover letter paths
     """
     cover_letter_paths = []
-    summary = state.get("resume_text", "")[:500]  # Use resume excerpt as summary
     skills = state.get("extracted_skills", [])  # Get extracted skills from state
+    
+    # Use the resume text as fallback summary if tailored summary not available
+    resume_summary = state.get("resume_text", "")[:500]
     
     for tailored_item in state.get("tailored_resumes", []):
         job = tailored_item.get("job", {})
+        tailored_data = tailored_item.get("tailored", {})
+        
         logger.info(f"Generating cover letter for {job.get('title')} at {job.get('company')}")
+        
+        # Use the tailored resume summary if available (more specific than generic resume text)
+        tailored_resume_summary = tailored_data.get("summary", "") or resume_summary
         
         cover_letter_path = generate_cover_letter(
             job=job,
-            summary=summary,
+            summary=resume_summary,
             skills=skills,
-            output_dir=str(COVER_LETTERS_DIR)
+            output_dir=str(COVER_LETTERS_DIR),
+            tailored_resume_summary=tailored_resume_summary  # Pass tailored summary for better specificity
         )
         
         if cover_letter_path:
             cover_letter_paths.append(cover_letter_path)
+        
+        time.sleep(2)  # FIXED: Pause after each tailor + cover letter pair to reduce Groq rate limit pressure.
     
     state["cover_letter_paths"] = cover_letter_paths
     logger.info(f"Generated {len(cover_letter_paths)} cover letters")

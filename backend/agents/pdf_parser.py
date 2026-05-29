@@ -41,8 +41,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
             return {"skills": []}
         
         # Call Groq API to parse resume
-        message = client.messages.create(
-            model="llama3-8b-8192",
+        message = client.chat.completions.create(  # FIXED: Use Groq chat completions API.
+            model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
             max_tokens=1024,
             messages=[
                 {
@@ -60,7 +60,7 @@ Return ONLY valid JSON with no additional text. Example format:
             ]
         )
         
-        response_text = message.content[0].text.strip()
+        response_text = message.choices[0].message.content.strip()  # FIXED: Read chat completion response content.
         
         # Parse JSON response
         extracted_data = json.loads(response_text)
