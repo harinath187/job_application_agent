@@ -37,6 +37,10 @@ def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def scrape_jobs(role: str, location: str, candidate_experience_years: int = 999) -> list[dict]:
+    if not SERPAPI_KEY:
+        logger.warning("SERPAPI_KEY not configured; job scraping is disabled. Returning empty job list.")
+        return []
+
     query = f"{role.strip()} {location.strip()}".strip()
     if not query:
         return []
@@ -59,9 +63,16 @@ def _fetch_jobs(query: str, wanted: int, candidate_experience_years: int = 999) 
         if next_page_token:
             params["next_page_token"] = next_page_token
 
-        resp = requests.get(SERPAPI_URL, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = requests.get(SERPAPI_URL, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.RequestException as request_error:
+            logger.error(f"Job scraping failed for query '{query}': {request_error}")
+            return []
+        except ValueError as decode_error:
+            logger.error(f"Job scraping returned invalid JSON for query '{query}': {decode_error}")
+            return []
 
         for raw in data.get("jobs_results", []):
             job = _normalise(raw)

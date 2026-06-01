@@ -16,9 +16,17 @@ from utils.file_helpers import sanitise_filename
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize Groq client if API key is provided
+# Read Groq API key at runtime.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
+
+def get_groq_client() -> Groq:
+    """
+    Lazily initialize the Groq client to avoid import-time failures.
+    """
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY is not set. Cover letter generation via Groq is unavailable.")
+    return Groq(api_key=GROQ_API_KEY)
 
 
 def build_advanced_prompt(
@@ -200,40 +208,39 @@ def generate_cover_letter(
         cover_letter_text = ""
         
         # Try Groq LLM with advanced prompt first
-        if client:
-            try:
-                # Build the advanced prompt with structured JD parsing
-                prompt = build_advanced_prompt(
-                    company_name=job.get("company", "Company"),
-                    job_title=job.get("title", "Position"),
-                    job_description=job.get("description", ""),
-                    tailored_resume_summary=resume_summary,
-                    extracted_skills=skills
-                )
-                
-                message = client.chat.completions.create(
-                    model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
-                    max_tokens=2000,
-                    temperature=0.3,  # Lower temperature for consistency
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": prompt
-                        }
-                    ]
-                )
-                cover_letter_text = message.choices[0].message.content.strip()  # FIXED: Read chat completion response content.
-                
-                # Validate output (check for minimum quality)
-                if not cover_letter_text or len(cover_letter_text.split("\n")) < 2 or len(cover_letter_text) < 150:
-                    logger.warning("LLM output too short; using fallback template")
-                    cover_letter_text = build_cover_letter_text(job, resume_summary, skills)
+        try:
+            client = get_groq_client()
+            # Build the advanced prompt with structured JD parsing
+            prompt = build_advanced_prompt(
+                company_name=job.get("company", "Company"),
+                job_title=job.get("title", "Position"),
+                job_description=job.get("description", ""),
+                tailored_resume_summary=resume_summary,
+                extracted_skills=skills
+            )
             
-            except Exception as llm_error:
-                logger.warning(f"Groq LLM generation failed: {llm_error}; using fallback template")
+            message = client.chat.completions.create(
+                model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
+                max_tokens=2000,
+                temperature=0.3,  # Lower temperature for consistency
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+            cover_letter_text = message.choices[0].message.content.strip()  # FIXED: Read chat completion response content.
+            
+            # Validate output (check for minimum quality)
+            if not cover_letter_text or len(cover_letter_text.split("\n")) < 2 or len(cover_letter_text) < 150:
+                logger.warning("LLM output too short; using fallback template")
                 cover_letter_text = build_cover_letter_text(job, resume_summary, skills)
-        else:
+        except RuntimeError:
             logger.warning("GROQ_API_KEY not configured; using fallback cover letter template")
+            cover_letter_text = build_cover_letter_text(job, resume_summary, skills)
+        except Exception as llm_error:
+            logger.warning(f"Groq LLM generation failed: {llm_error}; using fallback template")
             cover_letter_text = build_cover_letter_text(job, resume_summary, skills)
         
         # Final fallback if text is still empty
