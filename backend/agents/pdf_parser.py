@@ -143,7 +143,29 @@ Return ONLY valid JSON with no additional text. Example format:
                 return _heuristic_resume_parse(resume_text)
             
             # Parse JSON response
-            extracted_data = json.loads(response_text)
+            try:
+                extracted_data = json.loads(response_text)
+            except json.JSONDecodeError as e:
+                logger.warning(
+                    f"Groq response was not valid JSON ({e}); falling back to heuristic parsing. "
+                    f"Response text: {response_text!r}"
+                )
+                return _heuristic_resume_parse(resume_text)
+            
+            if not isinstance(extracted_data, dict):
+                logger.warning(
+                    f"Groq JSON response was not a dict (type={type(extracted_data).__name__}); falling back to heuristic parsing. "
+                    f"Response text: {response_text!r}"
+                )
+                return _heuristic_resume_parse(resume_text)
+            
+            skills = extracted_data.get("skills", [])
+            if not isinstance(skills, list):
+                logger.warning(
+                    f"Groq JSON response skills field is not a list (type={type(skills).__name__}); falling back to heuristic parsing. "
+                    f"Response text: {response_text!r}"
+                )
+                return _heuristic_resume_parse(resume_text)
             
             # Validate and set defaults
             experience_years = extracted_data.get("experience_years", 0)
@@ -153,12 +175,12 @@ Return ONLY valid JSON with no additional text. Example format:
                 experience_years = 0
             
             return {
-                "skills": extracted_data.get("skills", []) if isinstance(extracted_data.get("skills"), list) else [],
+                "skills": skills,
                 "experience_years": experience_years
             }
         
-        except (json.JSONDecodeError, RuntimeError, AttributeError) as e:
-            # Fall back to heuristic parsing if Groq unavailable or returns invalid JSON
+        except (RuntimeError, AttributeError) as e:
+            # Fall back to heuristic parsing if Groq unavailable or the Groq client fails
             logger.warning(f"Groq parsing failed ({type(e).__name__}: {e}); falling back to heuristic parsing")
             return _heuristic_resume_parse(resume_text)
         

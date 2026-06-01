@@ -1,8 +1,10 @@
 import axios from 'axios'
-import { API_BASE_URL } from '../utils/constants.js'
+import { API_BASE_URL, API_BASE_PATH } from '../utils/constants.js'
+
+const baseURL = API_BASE_URL ? `${API_BASE_URL.replace(/\/$/, '')}${API_BASE_PATH}` : API_BASE_PATH
 
 const http = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -15,7 +17,7 @@ async function uploadResume(file, role, location) {
     formData.append('role', role)
     formData.append('location', location)
 
-    const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
+    const response = await http.post('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -30,7 +32,7 @@ async function uploadResume(file, role, location) {
 
 async function getJobStatus(sessionId) {
   try {
-    const response = await http.get('/api/jobs', {
+    const response = await http.get('/jobs', {
       params: {
         session_id: sessionId
       }
@@ -44,7 +46,7 @@ async function getJobStatus(sessionId) {
 
 async function getJobDetail(jobId) {
   try {
-    const response = await http.get(`/api/jobs/${jobId}`)
+    const response = await http.get(`/jobs/${jobId}`)
     return response.data
   } catch (error) {
     console.error('getJobDetail error', error)
@@ -54,7 +56,7 @@ async function getJobDetail(jobId) {
 
 async function downloadFile(filename) {
   try {
-    const response = await axios.get(`${API_BASE_URL}/api/download`, {
+    const response = await http.get('/download', {
       params: {
         file: filename
       },

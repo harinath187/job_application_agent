@@ -36,7 +36,7 @@ export function Home() {
       const sessionId = response.jobReferenceId || response.session_id || response.sessionId
       navigate(`/dashboard?jobReferenceId=${sessionId}`)
     } catch (uploadError) {
-      setError('Upload failed. Please try again.')
+      setError('Upload failed. Please ensure the backend is running and try again.')
     } finally {
       setIsProcessing(false)
     }

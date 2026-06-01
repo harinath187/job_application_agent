@@ -30,7 +30,7 @@ export function Dashboard() {
         setJobs(data.jobs || [])
         setStatus(data.status || 'Waiting for results...')
       } catch (fetchError) {
-        setError('Unable to retrieve job status.')
+        setError('Unable to retrieve job status. Please ensure the backend is running and refresh the page.')
       }
     }
 
