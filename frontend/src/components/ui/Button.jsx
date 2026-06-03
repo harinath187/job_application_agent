@@ -3,7 +3,8 @@ import PropTypes from 'prop-types'
 const variantStyles = {
   primary: 'bg-indigo-600 hover:bg-indigo-700 text-white',
   secondary: 'bg-gray-800 hover:bg-gray-700 text-gray-200',
-  danger: 'bg-red-600 hover:bg-red-700 text-white'
+  danger: 'bg-red-600 hover:bg-red-700 text-white',
+  ghost: 'bg-transparent text-slate-900 hover:bg-slate-200 dark:text-white dark:hover:bg-white/10'
 }
 
 export function Button({ label, children, onClick, variant = 'primary', disabled, loading, icon, type = 'button' }) {
@@ -31,7 +32,7 @@ export function Button({ label, children, onClick, variant = 'primary', disabled
 Button.propTypes = {
   label: PropTypes.string,
   onClick: PropTypes.func,
-  variant: PropTypes.oneOf(['primary', 'secondary', 'danger']),
+  variant: PropTypes.oneOf(['primary', 'secondary', 'danger', 'ghost']),
   disabled: PropTypes.bool,
   loading: PropTypes.bool,
   icon: PropTypes.node,

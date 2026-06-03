@@ -10,16 +10,14 @@ export function App() {
   return (
     <JobAgentProvider>
       <BrowserRouter>
-        <div className="min-h-screen bg-gray-950 text-white">
-          <Navbar />
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/jobs/:jobId" element={<JobDetail />} />
-            <Route path="/manage-alerts" element={<ManageAlerts />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </div>
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/jobs/:jobId" element={<JobDetail />} />
+          <Route path="/manage-alerts" element={<ManageAlerts />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </BrowserRouter>
     </JobAgentProvider>
   )

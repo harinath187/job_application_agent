@@ -63,7 +63,22 @@ export function JobAgentProvider({ children }) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
   const [alertInfo, setAlertInfo] = useState({ alertsEnabled: false, alertEmail: null, alertMessage: '' })
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.localStorage.getItem('theme') || 'dark'
+    }
+    return 'dark'
+  })
   const intervalRef = useRef(null)
+  const isPollingRef = useRef(false)
+
+  const clearPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+    isPollingRef.current = false
+  }, [])
 
   const persistSession = useCallback(
     (nextState) => {
@@ -82,6 +97,20 @@ export function JobAgentProvider({ children }) {
   const clearSessionStorage = useCallback(() => {
     clearStoredSession()
   }, [])
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    document.documentElement.classList.toggle('light', theme === 'light')
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    window.localStorage.setItem('theme', theme)
+  }, [theme])
 
   const pollJobs = useCallback(
     async (currentSessionId) => {
@@ -137,6 +166,29 @@ export function JobAgentProvider({ children }) {
     [persistSession]
   )
 
+  const startPolling = useCallback(
+    (currentSessionId) => {
+      if (!currentSessionId) {
+        return
+      }
+
+      clearPolling()
+      intervalRef.current = setInterval(async () => {
+        if (isPollingRef.current) {
+          return
+        }
+
+        isPollingRef.current = true
+        try {
+          await pollJobs(currentSessionId)
+        } finally {
+          isPollingRef.current = false
+        }
+      }, POLLING_INTERVAL_MS)
+    },
+    [clearPolling, pollJobs]
+  )
+
   const loadSession = useCallback(
     async (targetSessionId, cachedJobs = []) => {
       if (!targetSessionId) {
@@ -152,17 +204,10 @@ export function JobAgentProvider({ children }) {
         persistSession({ sessionId: targetSessionId, jobs: cachedJobs, status: initialStatus, isProcessing: true })
       }
 
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
-
-      intervalRef.current = setInterval(() => {
-        pollJobs(targetSessionId)
-      }, POLLING_INTERVAL_MS)
-
+      startPolling(targetSessionId)
       await pollJobs(targetSessionId)
     },
-    [persistSession, pollJobs]
+    [persistSession, pollJobs, startPolling]
   )
 
   const startAgent = useCallback(
@@ -180,16 +225,7 @@ export function JobAgentProvider({ children }) {
         setStatus('Searching jobs...')
         persistSession({ sessionId: session, status: 'Searching jobs...', isProcessing: true, alertInfo: { alertsEnabled: false, alertEmail: null, alertMessage: '' } })
 
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current)
-        }
-
-        intervalRef.current = setInterval(() => {
-          if (session) {
-            pollJobs(session)
-          }
-        }, POLLING_INTERVAL_MS)
-
+        startPolling(session)
         await pollJobs(session)
         return session
       } catch (err) {
@@ -205,15 +241,12 @@ export function JobAgentProvider({ children }) {
   )
 
   const stopAgent = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-    }
+    clearPolling()
 
     setIsProcessing(false)
     setStatus('Stopped')
     persistSession({ status: 'Stopped', isProcessing: false })
-  }, [persistSession])
+  }, [clearPolling, persistSession])
 
   useEffect(() => {
     const stored = loadStoredSession()
@@ -229,11 +262,11 @@ export function JobAgentProvider({ children }) {
     }
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
+      clearPolling()
     }
-  }, [loadSession])
+    // We intentionally only run this effect once on mount to restore any persisted session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleDownload = async (filename) => {
     try {
@@ -260,16 +293,24 @@ export function JobAgentProvider({ children }) {
       isProcessing,
       error,
       alertInfo,
+      theme,
       startAgent,
       stopAgent,
       loadSession,
       clearSessionStorage,
-      handleDownload
+      handleDownload,
+      toggleTheme
     }),
-    [sessionId, jobs, status, isProcessing, error, alertInfo, startAgent, stopAgent, loadSession, clearSessionStorage]
+    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, toggleTheme]
   )
 
-  return <JobAgentContext.Provider value={contextValue}>{children}</JobAgentContext.Provider>
+  return (
+    <JobAgentContext.Provider value={contextValue}>
+      <div className={theme === 'dark' ? 'min-h-screen bg-gray-950 text-white' : 'min-h-screen bg-slate-50 text-slate-900'}>
+        {children}
+      </div>
+    </JobAgentContext.Provider>
+  )
 }
 
 JobAgentProvider.propTypes = {

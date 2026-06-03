@@ -25,3 +25,70 @@ body {
 ::selection {
   background: rgba(99, 102, 241, 0.35);
 }
+
+html.light {
+  color-scheme: light;
+  background: #f8fafc;
+}
+
+html.light body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+html.light .bg-gray-950 {
+  background-color: #f8fafc !important;
+}
+
+html.light .bg-gray-900 {
+  background-color: #f1f5f9 !important;
+}
+
+html.light .bg-gray-900\/95 {
+  background-color: rgba(241, 245, 249, 0.95) !important;
+}
+
+html.light .bg-gray-900\/80 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+}
+
+html.light .bg-gray-800 {
+  background-color: #e2e8f0 !important;
+}
+
+html.light .bg-gray-700 {
+  background-color: #e2e8f0 !important;
+}
+
+html.light .text-white {
+  color: #0f172a !important;
+}
+
+html.light .text-gray-200 {
+  color: #475569 !important;
+}
+
+html.light .text-gray-300 {
+  color: #475569 !important;
+}
+
+html.light .text-gray-400 {
+  color: #64748b !important;
+}
+
+html.light .border-gray-800 {
+  border-color: #cbd5e1 !important;
+}
+
+html.light .border-gray-700 {
+  border-color: #cbd5e1 !important;
+}
+
+html.light .border-gray-200 {
+  border-color: #cbd5e1 !important;
+}
+
+html.light .shadow-black\/20,
+html.light .shadow-black\/25 {
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.06) !important;
+}
