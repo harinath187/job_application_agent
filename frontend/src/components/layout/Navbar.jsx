@@ -1,7 +1,10 @@
-import { Briefcase, Github } from 'lucide-react'
+import { Briefcase } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useJobAgent } from '../../hooks/useJobAgent.jsx'
 
 export function Navbar() {
+  const { sessionId } = useJobAgent()
+
   return (
     <header className="sticky top-0 z-50 border-b border-gray-800 bg-gray-900/95 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4">
@@ -11,10 +14,14 @@ export function Navbar() {
           </div>
           <span className="text-lg font-semibold tracking-tight text-indigo-300">JobAgent</span>
         </Link>
-        <a href="#" className="inline-flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 transition hover:bg-gray-700">
-          <Github size={18} />
-          GitHub
-        </a>
+        <nav className="flex items-center gap-3">
+          {sessionId && (
+            <Link to="/dashboard" className="rounded-lg px-4 py-2 text-sm font-medium text-gray-200 hover:text-white">
+              Return to dashboard
+            </Link>
+          )}
+          <Link to="/manage-alerts" className="rounded-lg px-4 py-2 text-sm font-medium text-gray-200 hover:text-white">Manage Alerts</Link>
+        </nav>
       </div>
     </header>
   )

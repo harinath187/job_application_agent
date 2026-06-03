@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from utils.db import get_job_by_id, get_jobs_by_session
+from utils.db import get_job_by_id, get_jobs_by_session, get_session_alert_status, get_session_status
 
 
 logging.basicConfig(level=logging.INFO)
@@ -32,16 +32,33 @@ class JobResponse(BaseModel):
 @router.get("/jobs")
 async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JSONResponse:
     """
-    Retrieve all jobs for a given session.
+    Retrieve all jobs for a given session with session status.
     
     Args:
         session_id: Session identifier
     
     Returns:
-        JSON list of job objects with status
+        JSON list of job objects with status and overall session status
     """
     try:
         jobs = get_jobs_by_session(session_id)
+        session_status = get_session_status(session_id)
+        alert_status = get_session_alert_status(session_id)
+        
+        # Determine overall status message
+        status_message = "Processing..."
+        if session_status == "complete":
+            status_message = "Complete!"
+        elif session_status == "failed":
+            status_message = "Processing failed"
+        elif session_status == "processing":
+            # Count completed jobs to show progress
+            completed_jobs = sum(1 for job in jobs if job.get("status") == "complete")
+            total_jobs = len(jobs)
+            if total_jobs > 0:
+                status_message = f"Processing jobs ({completed_jobs}/{total_jobs})..."
+            else:
+                status_message = "Fetching jobs..."
         
         if not jobs:
             return JSONResponse(
@@ -49,7 +66,9 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 content={
                     "session_id": session_id,
                     "jobs": [],
-                    "count": 0
+                    "count": 0,
+                    "status": status_message,
+                    **alert_status
                 }
             )
         
@@ -76,7 +95,9 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
             content={
                 "session_id": session_id,
                 "jobs": job_list,
-                "count": len(job_list)
+                "count": len(job_list),
+                "status": status_message,
+                **alert_status
             }
         )
     

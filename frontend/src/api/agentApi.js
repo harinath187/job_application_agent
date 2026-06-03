@@ -70,9 +70,64 @@ async function downloadFile(filename) {
   }
 }
 
+async function subscribeToAlerts(payload) {
+  try {
+    const response = await http.post('/alerts/subscribe', payload)
+    return response.data
+  } catch (error) {
+    console.error('subscribeToAlerts error', error)
+    throw error
+  }
+}
+
+async function getAlertHistory(email) {
+  try {
+    const response = await http.get('/alerts/history', { params: { email } })
+    return response.data
+  } catch (error) {
+    console.error('getAlertHistory error', error)
+    throw error
+  }
+}
+
+async function getActiveAlertUsers() {
+  try {
+    const response = await http.get('/alerts/active-users')
+    return response.data
+  } catch (error) {
+    console.error('getActiveAlertUsers error', error)
+    throw error
+  }
+}
+
+async function toggleAlerts(payload) {
+  try {
+    const response = await http.patch('/alerts/toggle', payload)
+    return response.data
+  } catch (error) {
+    console.error('toggleAlerts error', error)
+    throw error
+  }
+}
+
+async function unsubscribe(email) {
+  try {
+    const response = await http.delete('/alerts/unsubscribe', { params: { email } })
+    return response.data
+  } catch (error) {
+    console.error('unsubscribe error', error)
+    throw error
+  }
+}
+
 export const agentApi = {
   uploadResume,
   getJobStatus,
   getJobDetail,
-  downloadFile
+  downloadFile,
+  subscribeToAlerts,
+  getActiveAlertUsers,
+  getAlertHistory,
+  toggleAlerts,
+  unsubscribe
 }

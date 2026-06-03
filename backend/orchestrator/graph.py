@@ -5,11 +5,18 @@ import logging
 import time  # FIXED: Add delay support for Groq rate limit protection.
 from langgraph.graph import StateGraph, END
 from orchestrator.state import AgentState
-from agents.pdf_parser import parse_resume, get_resume_text
+from agents.pdf_parser import parse_resume, get_resume_text, extract_email_from_text
 from agents.scraper_agent import scrape_jobs
 from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
-from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR
+from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
+from utils.db import (
+    insert_job,
+    update_job_status,
+    upsert_alert_preference_for_user,
+    upsert_alert_user,
+    upsert_session_alert_status,
+)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -34,23 +41,61 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     
     # Parse resume to extract structured data
     parsed_data = parse_resume(state["resume_path"])
+    extracted_email = parsed_data.get("email") or extract_email_from_text(resume_text)
+    state["extracted_email"] = extracted_email
     state["extracted_skills"] = parsed_data.get("skills", [])
     state["extracted_experience_years"] = parsed_data.get("experience_years", 0)
     
-    logger.info(f"Extracted skills={state['extracted_skills']} experience_years={state['extracted_experience_years']} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
+    logger.info(f"Extracted skills={state['extracted_skills']} experience_years={state['extracted_experience_years']} email={extracted_email} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
     
+    return state
+
+
+def auto_alert_registration_node(state: AgentState) -> AgentState:
+    """
+    Node that automatically registers email alerts from the resume email.
+    """
+    session_id = state.get("session_id")
+    email = state.get("extracted_email")
+    role = state.get("extracted_role", "")
+    location = state.get("extracted_location", "")
+
+    if not email:
+        message = "No email address found in resume; email alerts were not enabled."
+        state["alerts_enabled"] = False
+        state["alert_message"] = message
+        upsert_session_alert_status(session_id, None, False, message)
+        logger.info("Skipping automatic alert registration for session %s: no email found", session_id)
+        return state
+
+    try:
+        user_id = upsert_alert_user(email)
+        preference_id = upsert_alert_preference_for_user(user_id, role, location)
+        message = f"Email alerts enabled automatically for {email}."
+        state["alerts_enabled"] = True
+        state["alert_message"] = message
+        upsert_session_alert_status(session_id, email, True, message, preference_id)
+        logger.info("Enabled automatic email alerts for session %s and email %s", session_id, email)
+    except Exception as exc:
+        message = "Email address was found, but alerts could not be enabled."
+        state["alerts_enabled"] = False
+        state["alert_message"] = message
+        upsert_session_alert_status(session_id, email, False, message)
+        logger.error("Failed to auto-register alerts for session %s: %s", session_id, exc)
+
     return state
 
 
 def scraper_node(state: AgentState) -> AgentState:
     """
     Node that scrapes job listings based on extracted role and location.
+    Inserts scraped jobs into database with 'pending' status for incremental display.
     
     Args:
         state: Current agent state
     
     Returns:
-        Updated state with scraped jobs
+        Updated state with scraped jobs and their database IDs
     """
     role = state.get("extracted_role", "Software Engineer")
     location = state.get("extracted_location", "USA")
@@ -59,9 +104,16 @@ def scraper_node(state: AgentState) -> AgentState:
     
     experience_years = state.get("extracted_experience_years", 0)
     jobs = scrape_jobs(role=role, location=location, candidate_experience_years=experience_years)
-    state["jobs"] = jobs
     
     logger.info(f"Found {len(jobs)} jobs")
+    
+    # Insert each job into database with pending status for incremental display
+    session_id = state.get("session_id")
+    for job in jobs:
+        job_id = insert_job(session_id, job)
+        job["id"] = job_id  # Add the database ID to the job
+    
+    state["jobs"] = jobs
     
     return state
 
@@ -69,6 +121,7 @@ def scraper_node(state: AgentState) -> AgentState:
 def tailor_node(state: AgentState) -> AgentState:
     """
     Node that tailors resume for each scraped job and saves tailored versions.
+    Updates database immediately after each job is tailored for incremental display.
     
     Args:
         state: Current agent state
@@ -112,6 +165,7 @@ def tailor_node(state: AgentState) -> AgentState:
 def cover_letter_node(state: AgentState) -> AgentState:
     """
     Node that generates tailored cover letters for each job.
+    Updates database with completed status after each job is processed for incremental display.
     Uses the candidate's skills and tailored resume summary for specificity.
     
     Args:
@@ -146,7 +200,22 @@ def cover_letter_node(state: AgentState) -> AgentState:
         if cover_letter_path:
             cover_letter_paths.append(cover_letter_path)
         
-        time.sleep(2)  # FIXED: Pause after each tailor + cover letter pair to reduce Groq rate limit pressure.
+        # Convert absolute paths to relative paths for storage
+        relative_tailored_resume_path = get_relative_path(tailored_item.get("resume_path", "")) if tailored_item.get("resume_path") else None
+        relative_cover_letter_path = get_relative_path(cover_letter_path) if cover_letter_path else None
+        
+        # Update job in database immediately as "complete" so frontend displays it incrementally
+        job_id = job.get("id")
+        if job_id:
+            update_job_status(
+                job_id=job_id,
+                status="complete",
+                resume_path=relative_tailored_resume_path,
+                cover_letter_path=relative_cover_letter_path
+            )
+            logger.info(f"Updated job {job_id} to complete status")
+        
+        time.sleep(2)  # Pause after each tailor + cover letter pair to reduce Groq rate limit pressure.
     
     state["cover_letter_paths"] = cover_letter_paths
     logger.info(f"Generated {len(cover_letter_paths)} cover letters")
@@ -165,13 +234,15 @@ def build_graph():
     
     # Register nodes
     workflow.add_node("pdf_parser", pdf_parser_node)
+    workflow.add_node("auto_alert_registration", auto_alert_registration_node)
     workflow.add_node("scraper", scraper_node)
     workflow.add_node("tailor", tailor_node)
     workflow.add_node("cover_letter", cover_letter_node)
     
     # Define edges (linear flow)
     workflow.set_entry_point("pdf_parser")
-    workflow.add_edge("pdf_parser", "scraper")
+    workflow.add_edge("pdf_parser", "auto_alert_registration")
+    workflow.add_edge("auto_alert_registration", "scraper")
     workflow.add_edge("scraper", "tailor")
     workflow.add_edge("tailor", "cover_letter")
     workflow.add_edge("cover_letter", END)

@@ -47,6 +47,17 @@ COMMON_SKILLS = [
 ]
 
 
+EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+
+
+def extract_email_from_text(text: str) -> str | None:
+    """Extract the first valid-looking email address from resume text."""
+    if not text:
+        return None
+    match = EMAIL_PATTERN.search(text)
+    return match.group(0).lower() if match else None
+
+
 def extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extract raw text from a PDF using pypdf.
@@ -90,7 +101,8 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
 
     return {
         "skills": skills,
-        "experience_years": experience_years
+        "experience_years": experience_years,
+        "email": extract_email_from_text(resume_text)
     }
 
 
@@ -110,7 +122,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         
         if not resume_text.strip():
             logger.warning(f"No text extracted from {pdf_path}")
-            return {"skills": [], "experience_years": 0}
+            return {"skills": [], "experience_years": 0, "email": None}
         
         # Try Groq first, fall back to heuristic parsing if unavailable or fails
         try:
@@ -176,7 +188,8 @@ Return ONLY valid JSON with no additional text. Example format:
             
             return {
                 "skills": skills,
-                "experience_years": experience_years
+                "experience_years": experience_years,
+                "email": extract_email_from_text(resume_text)
             }
         
         except (RuntimeError, AttributeError) as e:
@@ -186,7 +199,7 @@ Return ONLY valid JSON with no additional text. Example format:
         
     except Exception as e:
         logger.error(f"Error parsing resume: {e}")
-        return {"skills": [], "experience_years": 0}
+        return {"skills": [], "experience_years": 0, "email": None}
 
 
 def get_resume_text(pdf_path: str) -> str:

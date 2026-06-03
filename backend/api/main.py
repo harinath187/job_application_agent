@@ -9,9 +9,10 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import upload, jobs, download
+from api.routes import upload, jobs, download, alerts
 from utils.db import init_db
 from utils.file_helpers import init_directories
+from alerts.scheduler import start_scheduler, stop_scheduler
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,11 +28,13 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing database and directories...")
     init_db()
     init_directories()
+    start_scheduler()
     logger.info("Application started")
     
     yield
     
     # Shutdown
+    stop_scheduler()
     logger.info("Application shutting down")
 
 
@@ -56,6 +59,7 @@ app.add_middleware(
 app.include_router(upload.router)
 app.include_router(jobs.router)
 app.include_router(download.router)
+app.include_router(alerts.router)
 
 
 @app.get("/")

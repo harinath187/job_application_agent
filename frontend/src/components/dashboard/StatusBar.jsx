@@ -5,6 +5,9 @@ const stageLabel = (status) => {
   if (status === 'Tailoring resumes...') return 'Tailoring resumes...'
   if (status === 'Complete!') return 'Complete!'
   if (status === 'Processing failed') return 'Processing failed'
+  if (status.includes('Processing jobs')) return status // Show incremental progress message
+  if (status === 'Fetching jobs...') return 'Fetching jobs...'
+  if (status === 'Processing...') return 'Processing...'
   return 'Parsing resume...'
 }
 

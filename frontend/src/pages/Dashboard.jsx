@@ -1,79 +1,34 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar.jsx'
 import { StatusBar } from '../components/dashboard/StatusBar.jsx'
 import { JobCard } from '../components/dashboard/JobCard.jsx'
 import { ResumePreview } from '../components/dashboard/ResumePreview.jsx'
 import { CoverLetterPreview } from '../components/dashboard/CoverLetterPreview.jsx'
-import { agentApi } from '../api/agentApi.js'
+import { AlertOptIn } from '../components/dashboard/AlertOptIn.jsx'
 import { Button } from '../components/ui/Button.jsx'
+import { useJobAgent } from '../hooks/useJobAgent.jsx'
 
 export function Dashboard() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const jobReferenceId = searchParams.get('jobReferenceId')
-  const [jobs, setJobs] = useState([])
-  const [status, setStatus] = useState('Waiting for upload...')
-  const [error, setError] = useState('')
+  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload } = useJobAgent()
 
   const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete').length, [jobs])
+  const isComplete = status === 'Complete!'
 
   useEffect(() => {
-    if (!jobReferenceId) {
+    const activeSession = jobReferenceId || sessionId
+    if (!activeSession) {
       navigate('/')
       return
     }
 
-    const fetchJobs = async () => {
-      try {
-        const data = await agentApi.getJobStatus(jobReferenceId)
-        setJobs(data.jobs || [])
-        setStatus(data.status || 'Waiting for results...')
-      } catch (fetchError) {
-        setError('Unable to retrieve job status. Please ensure the backend is running and refresh the page.')
-      }
+    if (jobReferenceId && jobReferenceId !== sessionId) {
+      loadSession(jobReferenceId)
     }
-
-    let intervalId = null
-
-    const poll = async () => {
-      await fetchJobs()
-      intervalId = setInterval(async () => {
-        try {
-          const data = await agentApi.getJobStatus(jobReferenceId)
-          setJobs(data.jobs || [])
-          setStatus(data.status || 'Waiting for results...')
-          if (data.status === 'Complete!' || data.status === 'Processing failed') {
-            if (intervalId) clearInterval(intervalId)
-          }
-        } catch {
-          if (intervalId) clearInterval(intervalId)
-          setError('Polling failed. Please reload the page.')
-        }
-      }, 5000)
-    }
-
-    poll()
-    return () => {
-      if (intervalId) clearInterval(intervalId)
-    }
-  }, [jobReferenceId, navigate])
-
-  const handleDownload = async (filename) => {
-    try {
-      const blob = await agentApi.downloadFile(filename)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = filename.split('/').pop() || 'download'
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    } catch {
-      setError('Download failed. Please try again.')
-    }
-  }
+  }, [jobReferenceId, sessionId, loadSession, navigate])
 
   const handleViewDetail = (jobId) => {
     navigate(`/jobs/${jobId}`)
@@ -92,6 +47,9 @@ export function Dashboard() {
                 <p className="mt-3 max-w-2xl text-gray-400">This page polls the backend for live updates as the agent sources jobs, tailors resumes, and generates cover letters.</p>
               </div>
               <div className="flex items-center gap-3">
+                {isProcessing && (
+                  <Button onClick={stopAgent} variant="danger">Stop</Button>
+                )}
                 <Button onClick={() => navigate('/')} variant="secondary">Upload a new resume</Button>
               </div>
             </div>
@@ -99,6 +57,12 @@ export function Dashboard() {
 
           <StatusBar status={status} jobsTotal={jobs.length} jobsComplete={jobsComplete} />
           {error && <div className="rounded-3xl border border-red-700 bg-red-950 p-4 text-sm text-red-200">{error}</div>}
+          <AlertOptIn
+            isComplete={isComplete}
+            alertsEnabled={alertInfo.alertsEnabled}
+            alertEmail={alertInfo.alertEmail}
+            alertMessage={alertInfo.alertMessage}
+          />
 
           <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
             <section className="space-y-6">

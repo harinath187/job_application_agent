@@ -204,6 +204,17 @@ export function JobAgentProvider({ children }) {
     [persistSession, pollJobs]
   )
 
+  const stopAgent = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    setIsProcessing(false)
+    setStatus('Stopped')
+    persistSession({ status: 'Stopped', isProcessing: false })
+  }, [persistSession])
+
   useEffect(() => {
     const stored = loadStoredSession()
     if (stored?.sessionId) {
@@ -212,7 +223,9 @@ export function JobAgentProvider({ children }) {
       setStatus(stored.status || getStatusFromJobs(stored.jobs || [], false))
       setIsProcessing(Boolean(stored.isProcessing))
       setAlertInfo(stored.alertInfo || { alertsEnabled: false, alertEmail: null, alertMessage: '' })
-      loadSession(stored.sessionId, stored.jobs || [])
+      if (stored.status !== 'Stopped') {
+        loadSession(stored.sessionId, stored.jobs || [])
+      }
     }
 
     return () => {
@@ -248,11 +261,12 @@ export function JobAgentProvider({ children }) {
       error,
       alertInfo,
       startAgent,
+      stopAgent,
       loadSession,
       clearSessionStorage,
       handleDownload
     }),
-    [sessionId, jobs, status, isProcessing, error, alertInfo, startAgent, loadSession, clearSessionStorage]
+    [sessionId, jobs, status, isProcessing, error, alertInfo, startAgent, stopAgent, loadSession, clearSessionStorage]
   )
 
   return <JobAgentContext.Provider value={contextValue}>{children}</JobAgentContext.Provider>

@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api", tags=["upload"])
 def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str) -> None:
     """
     Background task that runs the LangGraph agent pipeline.
+    Jobs are inserted and updated in the database incrementally as they are processed.
     
     Args:
         session_id: Session ID for tracking
@@ -33,10 +34,14 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str)
         graph = build_graph()
         
         initial_state: AgentState = {
+            "session_id": session_id,  # Pass session ID for database operations
             "resume_path": pdf_path,
             "resume_text": "",
             "extracted_role": role,
             "extracted_location": location,
+            "extracted_email": None,
+            "alerts_enabled": False,
+            "alert_message": "Email alerts pending resume parsing",
             "extracted_skills": [],
             "extracted_experience_years": 0,
             "jobs": [],
@@ -44,31 +49,8 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str)
             "cover_letter_paths": []
         }
         
-        # Run the graph
+        # Run the graph - jobs will be inserted and updated incrementally during execution
         result = graph.invoke(initial_state)
-        
-        # Insert jobs and cover letters into database
-        for idx, tailored_item in enumerate(result.get("tailored_resumes", [])):
-            job = tailored_item.get("job", {})
-            job_id = insert_job(session_id, job)
-            
-            # Get corresponding cover letter path if available and convert to relative path
-            cover_letter_path = result.get("cover_letter_paths", [])[idx] if idx < len(result.get("cover_letter_paths", [])) else None
-            
-            # Get the tailored resume path (already absolute from the agent)
-            tailored_resume_path = tailored_item.get("resume_path", "")
-            
-            # Convert absolute paths to relative paths for storage
-            relative_tailored_resume_path = get_relative_path(tailored_resume_path) if tailored_resume_path else None
-            relative_cover_letter_path = get_relative_path(cover_letter_path) if cover_letter_path else None
-            
-            # Update job with tailored resume path and cover letter path
-            update_job_status(
-                job_id=job_id,
-                status="complete",
-                resume_path=relative_tailored_resume_path,
-                cover_letter_path=relative_cover_letter_path
-            )
         
         # Mark session as complete
         update_session_status(session_id, "complete")

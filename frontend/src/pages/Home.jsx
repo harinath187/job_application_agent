@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { UploadBox } from '../components/dashboard/UploadBox.jsx'
 import { Button } from '../components/ui/Button.jsx'
-import { agentApi } from '../api/agentApi.js'
+import { useJobAgent } from '../hooks/useJobAgent.jsx'
 
 export function Home() {
   const navigate = useNavigate()
+  const { startAgent } = useJobAgent()
   const [selectedFile, setSelectedFile] = useState(null)
   const [role, setRole] = useState('')
   const [location, setLocation] = useState('')
@@ -32,9 +33,9 @@ export function Home() {
     setIsProcessing(true)
 
     try {
-      const response = await agentApi.uploadResume(selectedFile, role.trim(), location.trim())
-      const sessionId = response.jobReferenceId || response.session_id || response.sessionId
-      navigate(`/dashboard?jobReferenceId=${sessionId}`)
+      const sessionId = await startAgent({ file: selectedFile, role: role.trim(), location: location.trim() })
+      const query = new URLSearchParams({ jobReferenceId: sessionId }).toString()
+      navigate(`/dashboard?${query}`)
     } catch (uploadError) {
       setError('Upload failed. Please ensure the backend is running and try again.')
     } finally {
