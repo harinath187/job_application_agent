@@ -19,6 +19,7 @@ Job Application Agent is an AI-powered job application automation system that he
 - Resume tailoring per job (PDF output)
 - Cover letter generation (DOCX output)
 - Session and job tracking (SQLite)
+- Email and Telegram alert subscription management
 - LLM-powered flows with safe fallbacks when keys are not configured
 
 ## Architecture
@@ -41,6 +42,7 @@ flowchart LR
 - `backend/api/routes/upload.py` — Upload endpoint; starts background pipeline and inserts session record.
 - `backend/api/routes/jobs.py` — Retrieve jobs for a session and job detail endpoint.
 - `backend/api/routes/download.py` — Serves generated files with path-safety checks.
+- `backend/api/routes/alerts.py` — Alert subscription and preference management endpoints.
 - `backend/orchestrator/graph.py` — Builds the LangGraph pipeline coordinating agents.
 - `backend/agents/pdf_parser.py` — Extracts text and structured resume data (Groq optional, heuristic fallback).
 - `backend/agents/scraper_agent.py` — Fetches and normalizes job listings using SerpApi (optional).
@@ -147,6 +149,17 @@ npm run dev
 - `GET /api/jobs?session_id=<id>` — Get list of jobs for a session.
 - `GET /api/jobs/{job_id}` — Get job details.
 - `GET /api/download?file=<filename>` — Download generated file.
+- `POST /api/alerts/subscribe` — Create a new email/Telegram alert preference.
+- `PUT /api/alerts/preferences/{pref_id}` — Update an existing alert preference.
+- `PATCH /api/alerts/telegram` — Update Telegram chat ID for an alert user.
+- `PATCH /api/alerts/toggle` — Enable or disable a user's alert preferences.
+- `DELETE /api/alerts/preferences/{pref_id}` — Delete a saved alert preference.
+- `DELETE /api/alerts/unsubscribe` — Remove a user from alert notifications.
+- `GET /api/alerts/active-users` — List active alert users.
+
+Additional service endpoints exposed by the backend:
+- `GET /` — API health and endpoint summary.
+- `GET /health` — Simple health check.
 
 ### Example upload (curl)
 ```bash
