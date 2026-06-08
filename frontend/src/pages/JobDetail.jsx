@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { agentApi } from '../api/agentApi.js'
 import { Button } from '../components/ui/Button.jsx'
@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge.jsx'
 export function JobDetail() {
   const { jobId } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [job, setJob] = useState(null)
   const [error, setError] = useState('')
 
@@ -40,6 +41,15 @@ export function JobDetail() {
     }
   }
 
+  const handleBack = () => {
+    if (window.history.length > 1 && location.key !== 'default') {
+      navigate(-1)
+      return
+    }
+
+    navigate('/search-history')
+  }
+
   if (error) {
     return (
       <div className="mx-auto max-w-4xl px-6 py-10 text-sm text-red-300">{error}</div>
@@ -53,7 +63,7 @@ export function JobDetail() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <div className="mb-6 flex items-center gap-3">
-        <Button onClick={() => navigate('/search-history')} variant="ghost">
+        <Button onClick={handleBack} variant="ghost">
           <ArrowLeft size={16} />
           Back
         </Button>
