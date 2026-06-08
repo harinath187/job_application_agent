@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { X } from 'lucide-react'
 import { UploadBox } from '../components/dashboard/UploadBox.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
@@ -12,6 +13,7 @@ export function Home() {
   const [location, setLocation] = useState('')
   const [error, setError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+  const [uploadKey, setUploadKey] = useState(0)
 
   const handleFileSelect = (file, validationError) => {
     setError(validationError || '')
@@ -21,6 +23,12 @@ export function Home() {
     }
 
     setSelectedFile(file)
+  }
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null)
+    setError('')
+    setUploadKey((current) => current + 1)
   }
 
   const handleRun = async () => {
@@ -56,10 +64,25 @@ export function Home() {
             <h2 className="text-xl font-semibold text-white">Ready to start?</h2>
             <p className="mt-2 text-sm text-gray-400">Upload a PDF resume and begin the intelligent job search pipeline.</p>
             <div className="mt-6 space-y-6">
-              <UploadBox onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+              <UploadBox key={uploadKey} onFileSelect={handleFileSelect} isProcessing={isProcessing} />
 
               {selectedFile && (
-                <p className="text-sm text-gray-300">Selected file: {selectedFile.name}</p>
+                <div className="flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-gray-300">
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Selected resume</p>
+                    <p className="truncate font-medium text-white">{selectedFile.name}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveFile}
+                    disabled={isProcessing}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-200 transition hover:border-red-400 hover:bg-red-500/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Remove selected resume"
+                    title="Remove selected resume"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">

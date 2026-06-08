@@ -1,10 +1,11 @@
-import { LayoutDashboard, Upload, Settings2 } from 'lucide-react'
+import { History, LayoutDashboard, Upload, Settings2 } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 const links = [
   { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard },
+  { label: 'Search History', to: '/search-history', icon: History },
   { label: 'Upload New', to: '/', icon: Upload },
-  { label: 'Settings', to: '#', icon: Settings2 }
+  // { label: 'Settings', to: '#', icon: Settings2 }
 ]
 
 export function Sidebar() {

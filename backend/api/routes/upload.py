@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from orchestrator.graph import build_graph
 from orchestrator.state import AgentState
 from utils.file_helpers import save_upload, RESUMES_DIR, get_relative_path
-from utils.db import insert_session, insert_job, update_job_status, update_session_status
+from utils.db import insert_session, insert_job, insert_search_history, update_job_status, update_session_status
 
 
 logging.basicConfig(level=logging.INFO)
@@ -97,6 +97,7 @@ async def upload_resume(
         
         # Create session in database
         insert_session(session_id, "processing")
+        insert_search_history(session_id, file.filename, pdf_path, role, location)
         
         # Add background task to run pipeline
         background_tasks.add_task(run_agent_pipeline, session_id, pdf_path, role, location)

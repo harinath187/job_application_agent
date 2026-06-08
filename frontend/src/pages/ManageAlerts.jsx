@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { agentApi } from '../api/agentApi.js'
 import { Button } from '../components/ui/Button.jsx'
 
 export function ManageAlerts() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [usersLoading, setUsersLoading] = useState(false)
@@ -81,6 +83,10 @@ export function ManageAlerts() {
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <h1 className="text-2xl font-semibold">Manage Alerts</h1>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Button onClick={() => navigate('/search-history')} variant="secondary">View Search History</Button>
+        <Button onClick={() => navigate('/')} variant="secondary">Go to Upload Section</Button>
+      </div>
 
       <section className="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-6">
         <div className="flex items-center justify-between gap-3">

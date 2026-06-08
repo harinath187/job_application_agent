@@ -36,6 +36,19 @@ def init_db() -> None:
             )
         """)
 
+        # Create search history table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS search_history (
+                session_id TEXT PRIMARY KEY,
+                resume_name TEXT,
+                resume_path TEXT,
+                role TEXT NOT NULL,
+                location TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+            )
+        """)
+
         # Create jobs table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
@@ -169,6 +182,25 @@ def insert_session(session_id: str, status: str) -> None:
         conn.commit()
 
 
+def insert_search_history(session_id: str, resume_name: str, resume_path: str, role: str, location: str) -> None:
+    """Persist the criteria used for a search session."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        created_at = datetime.utcnow().isoformat()
+        cursor.execute(
+            """INSERT INTO search_history
+               (session_id, resume_name, resume_path, role, location, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(session_id) DO UPDATE SET
+                   resume_name = excluded.resume_name,
+                   resume_path = excluded.resume_path,
+                   role = excluded.role,
+                   location = excluded.location""",
+            (session_id, resume_name, resume_path, role, location, created_at)
+        )
+        conn.commit()
+
+
 def insert_job(session_id: str, job: Dict[str, Any]) -> int:
     """
     Insert a job into the database.
@@ -215,6 +247,32 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM jobs WHERE session_id = ? ORDER BY created_at DESC", (session_id,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
+    """Return saved search runs ordered by most recent first."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if session_id:
+            cursor.execute(
+                """SELECT sh.session_id, sh.resume_name, sh.resume_path, sh.role, sh.location,
+                          sh.created_at, s.status
+                   FROM search_history sh
+                   LEFT JOIN sessions s ON s.session_id = sh.session_id
+                   WHERE sh.session_id = ?
+                   ORDER BY sh.created_at DESC""",
+                (session_id,)
+            )
+        else:
+            cursor.execute(
+                """SELECT sh.session_id, sh.resume_name, sh.resume_path, sh.role, sh.location,
+                          sh.created_at, s.status
+                   FROM search_history sh
+                   LEFT JOIN sessions s ON s.session_id = sh.session_id
+                   ORDER BY sh.created_at DESC"""
+            )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 

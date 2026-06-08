@@ -6,7 +6,7 @@ from typing import List
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from utils.db import get_job_by_id, get_jobs_by_session, get_session_alert_status, get_session_status
+from utils.db import get_job_by_id, get_jobs_by_session, get_search_history, get_session_alert_status, get_session_status
 
 
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +27,44 @@ class JobResponse(BaseModel):
     resume_path: str = None
     cover_letter_path: str = None
     status: str
+
+
+@router.get("/search-history")
+async def search_history() -> JSONResponse:
+    """Return all saved search sessions."""
+    try:
+        history = get_search_history()
+        return JSONResponse(status_code=200, content={"history": history, "count": len(history)})
+    except Exception as e:
+        logger.error("Error retrieving search history: %s", e)
+        raise HTTPException(status_code=500, detail="Error retrieving search history")
+
+
+@router.get("/search-history/{session_id}")
+async def search_history_item(session_id: str) -> JSONResponse:
+    """Return one saved search session."""
+    try:
+        history = get_search_history(session_id=session_id)
+        if not history:
+            raise HTTPException(status_code=404, detail="Search history item not found")
+        jobs = get_jobs_by_session(session_id)
+        session_status = get_session_status(session_id)
+        alert_status = get_session_alert_status(session_id)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "history": history[0],
+                "jobs": jobs,
+                "session_id": session_id,
+                "status": session_status,
+                **alert_status
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error retrieving search history item %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail="Error retrieving search history item")
 
 
 @router.get("/jobs")

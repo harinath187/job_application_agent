@@ -4,6 +4,7 @@ import { Home } from './pages/Home.jsx'
 import { Dashboard } from './pages/Dashboard.jsx'
 import { JobDetail } from './pages/JobDetail.jsx'
 import { ManageAlerts } from './pages/ManageAlerts.jsx'
+import { SearchHistory } from './pages/SearchHistory.jsx'
 import { JobAgentProvider } from './hooks/useJobAgent.jsx'
 
 export function App() {
@@ -16,6 +17,7 @@ export function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/jobs/:jobId" element={<JobDetail />} />
           <Route path="/manage-alerts" element={<ManageAlerts />} />
+          <Route path="/search-history" element={<SearchHistory />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

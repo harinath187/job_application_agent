@@ -90,6 +90,26 @@ async function getAlertHistory(email) {
   }
 }
 
+async function getSearchHistory() {
+  try {
+    const response = await http.get('/search-history')
+    return response.data
+  } catch (error) {
+    console.error('getSearchHistory error', error)
+    throw error
+  }
+}
+
+async function getSearchHistoryItem(sessionId) {
+  try {
+    const response = await http.get(`/search-history/${sessionId}`)
+    return response.data
+  } catch (error) {
+    console.error('getSearchHistoryItem error', error)
+    throw error
+  }
+}
+
 async function getActiveAlertUsers() {
   try {
     const response = await http.get('/alerts/active-users')
@@ -123,6 +143,8 @@ async function unsubscribe(email) {
 export const agentApi = {
   uploadResume,
   getJobStatus,
+  getSearchHistory,
+  getSearchHistoryItem,
   getJobDetail,
   downloadFile,
   subscribeToAlerts,
