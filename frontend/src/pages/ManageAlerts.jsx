@@ -55,10 +55,15 @@ export function ManageAlerts() {
   }
 
   const disableAll = async (targetEmail = email) => {
+    const normalizedEmail = targetEmail.trim()
+    if (!normalizedEmail) {
+      setError('Please enter or select an email address first')
+      return
+    }
     setError('')
     try {
-      await agentApi.toggleAlerts({ email: targetEmail, active: false })
-      setMessage(`All alerts have been disabled for ${targetEmail}`)
+      await agentApi.toggleAlerts({ email: normalizedEmail, active: false })
+      setMessage(`All alerts have been disabled for ${normalizedEmail}`)
       await loadActiveUsers()
     } catch (err) {
       setError('Failed to disable alerts')
@@ -66,14 +71,19 @@ export function ManageAlerts() {
   }
 
   const deleteAll = async (targetEmail = email) => {
+    const normalizedEmail = targetEmail.trim()
+    if (!normalizedEmail) {
+      setError('Please enter or select an email address first')
+      return
+    }
     const ok = window.confirm(`Delete all alert data for ${targetEmail}? This cannot be undone.`)
     if (!ok) return
     setError('')
     try {
-      await agentApi.unsubscribe(targetEmail)
+      await agentApi.unsubscribe(normalizedEmail)
       setHistory([])
-      if (targetEmail === email) setEmail('')
-      setMessage(`Alert data removed for ${targetEmail}.`)
+      if (normalizedEmail === email.trim()) setEmail('')
+      setMessage(`Alert data removed for ${normalizedEmail}.`)
       await loadActiveUsers()
     } catch (err) {
       setError('Failed to delete data')
@@ -185,8 +195,8 @@ export function ManageAlerts() {
         )}
 
         <div className="mt-6 flex gap-3">
-          <Button onClick={() => disableAll()} variant="secondary">Disable All Alerts</Button>
-          <Button onClick={() => deleteAll()} variant="danger">Delete All My Data</Button>
+          <Button onClick={() => disableAll()} variant="secondary" disabled={!email.trim()}>Disable All Alerts</Button>
+          <Button onClick={() => deleteAll()} variant="danger" disabled={!email.trim()}>Delete All My Data</Button>
         </div>
       </section>
     </main>

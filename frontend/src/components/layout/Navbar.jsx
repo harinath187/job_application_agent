@@ -7,7 +7,7 @@ export function Navbar() {
   const { sessionId, theme, toggleTheme } = useJobAgent()
   const navigate = useNavigate()
   const location = useLocation()
-  const showHistoryNav = location.pathname === '/search-history' || location.pathname === '/manage-alerts'
+  const showBackButton = location.pathname === '/search-history' || location.pathname === '/manage-alerts'
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/90 text-slate-900 backdrop-blur-xl transition-colors duration-200 dark:border-gray-800 dark:bg-gray-900/95 dark:text-white">
@@ -19,15 +19,10 @@ export function Navbar() {
           <span className="text-lg font-semibold tracking-tight text-indigo-600 dark:text-indigo-300">JobAgent</span>
         </Link>
         <nav className="flex items-center gap-3">
-          {showHistoryNav && (
-            <>
-              <Button type="button" variant="ghost" onClick={() => navigate(-1)} icon={<ChevronLeft size={16} />}>
-                Back
-              </Button>
-              {/* <Button type="button" variant="ghost" onClick={() => navigate(1)} icon={<ChevronRight size={16} />}>
-                Forward
-              </Button> */}
-            </>
+          {showBackButton && (
+            <Button type="button" variant="ghost" onClick={() => navigate('/')} icon={<ChevronLeft size={16} />}>
+              Back
+            </Button>
           )}
           {/* <Button
             type="button"

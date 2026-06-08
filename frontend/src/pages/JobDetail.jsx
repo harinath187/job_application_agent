@@ -53,7 +53,7 @@ export function JobDetail() {
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
       <div className="mb-6 flex items-center gap-3">
-        <Button onClick={() => navigate(-1)} variant="ghost">
+        <Button onClick={() => navigate('/search-history')} variant="ghost">
           <ArrowLeft size={16} />
           Back
         </Button>

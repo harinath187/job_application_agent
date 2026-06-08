@@ -46,7 +46,7 @@ export function Dashboard() {
                 <h1 className="mt-3 text-3xl font-semibold text-white">Processing your tailored applications</h1>
                 <p className="mt-3 max-w-2xl text-gray-400">This page polls the backend for live updates as the agent sources jobs, tailors resumes, and generates cover letters.</p>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {isProcessing && (
                   <Button onClick={stopAgent} variant="danger">Stop</Button>
                 )}
