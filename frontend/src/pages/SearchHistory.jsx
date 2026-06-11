@@ -1,34 +1,90 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Clock3, FileText, MapPin, User } from 'lucide-react'
+import { ArrowRight, Clock3, FileText, MapPin, Trash2, User } from 'lucide-react'
 import { agentApi } from '../api/agentApi.js'
 import { Button } from '../components/ui/Button.jsx'
 
 export function SearchHistory() {
   const navigate = useNavigate()
   const [history, setHistory] = useState([])
+  const [selectedIds, setSelectedIds] = useState([])
   const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      setError('')
-      try {
-        const data = await agentApi.getSearchHistory()
-        setHistory(data.history || [])
-      } catch {
-        setError('Unable to load search history.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
+    refreshHistory()
   }, [])
 
   const openHistory = (sessionId) => {
     navigate(`/dashboard?jobReferenceId=${sessionId}`)
+  }
+
+  const refreshHistory = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await agentApi.getSearchHistory()
+      setHistory(data.history || [])
+      setSelectedIds((current) => current.filter((sessionId) => (data.history || []).some((item) => item.session_id === sessionId)))
+    } catch {
+      setError('Unable to load search history.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const toggleSelected = (sessionId) => {
+    setSelectedIds((current) =>
+      current.includes(sessionId)
+        ? current.filter((id) => id !== sessionId)
+        : [...current, sessionId]
+    )
+  }
+
+  const deleteOne = async (sessionId) => {
+    const item = history.find((entry) => entry.session_id === sessionId)
+    const label = item?.role ? `${item.role} in ${item.location}` : sessionId
+    const ok = window.confirm(`Delete this search history item (${label})? This cannot be undone.`)
+    if (!ok) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      await agentApi.deleteSearchHistoryItem(sessionId)
+      setHistory((current) => current.filter((item) => item.session_id !== sessionId))
+      setSelectedIds((current) => current.filter((id) => id !== sessionId))
+    } catch {
+      setError('Unable to delete the selected search history item.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const deleteSelected = async () => {
+    if (selectedIds.length === 0) return
+    const ok = window.confirm(`Delete ${selectedIds.length} selected search history item${selectedIds.length === 1 ? '' : 's'}? This cannot be undone.`)
+    if (!ok) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      await agentApi.deleteSearchHistoryItems(selectedIds)
+      setHistory((current) => current.filter((item) => !selectedIds.includes(item.session_id)))
+      setSelectedIds([])
+    } catch {
+      setError('Unable to delete the selected search history items.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const selectAll = () => {
+    setSelectedIds(history.map((item) => item.session_id))
+  }
+
+  const clearSelection = () => {
+    setSelectedIds([])
   }
 
   return (
@@ -45,6 +101,20 @@ export function SearchHistory() {
       {error && <div className="mt-6 rounded-2xl border border-red-700 bg-red-950 p-4 text-sm text-red-200">{error}</div>}
 
       <section className="mt-6 rounded-[2rem] border border-gray-800 bg-gray-900 p-6">
+        {history.length > 0 && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-gray-400">
+              {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'No items selected'}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={selectAll} variant="secondary">Select All</Button>
+              <Button onClick={clearSelection} variant="secondary" disabled={selectedIds.length === 0}>Clear Selection</Button>
+              <Button onClick={deleteSelected} variant="danger" disabled={selectedIds.length === 0 || deleting}>
+                Delete Selected
+              </Button>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="py-12 text-center text-sm text-gray-400">Loading search history...</div>
         ) : history.length === 0 ? (
@@ -55,11 +125,30 @@ export function SearchHistory() {
         ) : (
           <div className="space-y-4">
             {history.map((item) => (
-              <button
+              <div
                 key={item.session_id}
-                onClick={() => openHistory(item.session_id)}
                 className="w-full rounded-3xl border border-gray-800 bg-gray-950 p-5 text-left transition hover:border-indigo-500 hover:bg-gray-900"
               >
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <label className="flex items-center gap-3 text-sm text-gray-300">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.session_id)}
+                      onChange={() => toggleSelected(item.session_id)}
+                      className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-indigo-500 focus:ring-indigo-500"
+                    />
+                    Select item
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Button onClick={() => deleteOne(item.session_id)} variant="danger" disabled={deleting}>
+                      <Trash2 size={16} />
+                      Delete
+                    </Button>
+                    <Button onClick={() => openHistory(item.session_id)} variant="secondary">
+                      Open
+                    </Button>
+                  </div>
+                </div>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="flex items-start gap-3">
@@ -96,7 +185,7 @@ export function SearchHistory() {
                     <ArrowRight size={16} />
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}

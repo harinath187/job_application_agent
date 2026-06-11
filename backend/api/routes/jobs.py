@@ -6,7 +6,15 @@ from typing import List
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from utils.db import get_job_by_id, get_jobs_by_session, get_search_history, get_session_alert_status, get_session_status
+from utils.db import (
+    delete_search_history_item,
+    delete_search_history_items,
+    get_job_by_id,
+    get_jobs_by_session,
+    get_search_history,
+    get_session_alert_status,
+    get_session_status,
+)
 
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +46,32 @@ async def search_history() -> JSONResponse:
     except Exception as e:
         logger.error("Error retrieving search history: %s", e)
         raise HTTPException(status_code=500, detail="Error retrieving search history")
+
+
+@router.delete("/search-history/{session_id}")
+async def delete_search_history(session_id: str) -> JSONResponse:
+    """Delete one saved search session."""
+    try:
+        deleted = delete_search_history_item(session_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Search history item not found")
+        return JSONResponse(status_code=200, content={"deleted": 1, "session_ids": [session_id]})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error deleting search history item %s: %s", session_id, e)
+        raise HTTPException(status_code=500, detail="Error deleting search history item")
+
+
+@router.delete("/search-history")
+async def delete_search_history_bulk(session_ids: List[str] = Query(..., description="Session IDs to delete")) -> JSONResponse:
+    """Delete multiple saved search sessions."""
+    try:
+        deleted_count = delete_search_history_items(session_ids)
+        return JSONResponse(status_code=200, content={"deleted": deleted_count, "session_ids": session_ids})
+    except Exception as e:
+        logger.error("Error deleting search history items %s: %s", session_ids, e)
+        raise HTTPException(status_code=500, detail="Error deleting search history items")
 
 
 @router.get("/search-history/{session_id}")

@@ -110,6 +110,28 @@ async function getSearchHistoryItem(sessionId) {
   }
 }
 
+async function deleteSearchHistoryItem(sessionId) {
+  try {
+    const response = await http.delete(`/search-history/${sessionId}`)
+    return response.data
+  } catch (error) {
+    console.error('deleteSearchHistoryItem error', error)
+    throw error
+  }
+}
+
+async function deleteSearchHistoryItems(sessionIds) {
+  try {
+    const response = await http.delete('/search-history', {
+      params: { session_ids: sessionIds }
+    })
+    return response.data
+  } catch (error) {
+    console.error('deleteSearchHistoryItems error', error)
+    throw error
+  }
+}
+
 async function getActiveAlertUsers() {
   try {
     const response = await http.get('/alerts/active-users')
@@ -145,6 +167,8 @@ export const agentApi = {
   getJobStatus,
   getSearchHistory,
   getSearchHistoryItem,
+  deleteSearchHistoryItem,
+  deleteSearchHistoryItems,
   getJobDetail,
   downloadFile,
   subscribeToAlerts,

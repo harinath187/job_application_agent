@@ -176,3 +176,36 @@ async def test_cleanup_removes_never_opted_in(temp_db):
     cur.execute("SELECT COUNT(*) AS c FROM alert_preferences WHERE user_id = ?", (user_id,))
     assert cur.fetchone()["c"] == 0
     conn.close()
+
+
+async def test_delete_single_search_history_item(temp_db):
+    from backend.utils.db import insert_session, insert_search_history, get_search_history
+
+    session_id = "session-delete-one"
+    insert_session(session_id, "complete")
+    insert_search_history(session_id, "resume.pdf", "/tmp/resume.pdf", "Engineer", "Remote")
+
+    assert len(get_search_history()) == 1
+
+    async with httpx.AsyncClient(app=__import__('backend.api.main', fromlist=['app']).app, base_url='http://testserver') as ac:
+        resp = await ac.delete(f'/api/search-history/{session_id}')
+        assert resp.status_code == 200
+
+    assert get_search_history() == []
+
+
+async def test_delete_multiple_search_history_items(temp_db):
+    from backend.utils.db import insert_session, insert_search_history, get_search_history
+
+    session_ids = ["session-bulk-1", "session-bulk-2"]
+    for idx, session_id in enumerate(session_ids, start=1):
+      insert_session(session_id, "complete")
+      insert_search_history(session_id, f"resume-{idx}.pdf", f"/tmp/resume-{idx}.pdf", "Engineer", "Remote")
+
+    assert len(get_search_history()) == 2
+
+    async with httpx.AsyncClient(app=__import__('backend.api.main', fromlist=['app']).app, base_url='http://testserver') as ac:
+        resp = await ac.delete('/api/search-history', params=[('session_ids', session_ids[0]), ('session_ids', session_ids[1])])
+        assert resp.status_code == 200
+
+    assert get_search_history() == []

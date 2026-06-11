@@ -277,6 +277,30 @@ def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def delete_search_history_item(session_id: str) -> bool:
+    """Delete a saved search session and its related rows."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM search_history WHERE session_id = ?", (session_id,))
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        return deleted
+
+
+def delete_search_history_items(session_ids: List[str]) -> int:
+    """Delete multiple saved search sessions and return the number removed."""
+    if not session_ids:
+        return 0
+
+    placeholders = ",".join("?" for _ in session_ids)
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(f"DELETE FROM search_history WHERE session_id IN ({placeholders})", session_ids)
+        deleted_count = cursor.rowcount
+        conn.commit()
+        return deleted_count
+
+
 def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
     """
     Retrieve a specific job by its ID.
