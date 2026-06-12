@@ -60,20 +60,32 @@ html.light .bg-gray-700 {
   background-color: #e2e8f0 !important;
 }
 
-html.light .text-white {
+html.light .text-gray-950,
+html.light .text-gray-900,
+html.light .text-slate-950,
+html.light .text-slate-900 {
   color: #0f172a !important;
-}
-
-html.light .text-gray-200 {
-  color: #475569 !important;
-}
-
-html.light .text-gray-300 {
-  color: #475569 !important;
 }
 
 html.light .text-gray-400 {
   color: #64748b !important;
+}
+
+html.light .text-gray-300,
+html.light .text-gray-200 {
+  color: #475569 !important;
+}
+
+html.light .text-indigo-300 {
+  color: #4338ca !important;
+}
+
+html.light .text-indigo-400 {
+  color: #4f46e5 !important;
+}
+
+html.light .text-emerald-400 {
+  color: #059669 !important;
 }
 
 html.light .border-gray-800 {
@@ -91,4 +103,39 @@ html.light .border-gray-200 {
 html.light .shadow-black\/20,
 html.light .shadow-black\/25 {
   box-shadow: 0 20px 50px rgba(15, 23, 42, 0.06) !important;
+}
+
+html.light button[data-variant='primary'] {
+  background-color: #4338ca !important;
+  color: #ffffff !important;
+}
+
+html.light button[data-variant='primary']:hover {
+  background-color: #3730a3 !important;
+}
+
+html.light button[data-variant='secondary'] {
+  background-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.light button[data-variant='secondary']:hover {
+  background-color: #cbd5e1 !important;
+}
+
+html.light button[data-variant='danger'] {
+  background-color: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+html.light button[data-variant='danger']:hover {
+  background-color: #b91c1c !important;
+}
+
+html.light button[data-variant='ghost'] {
+  color: #0f172a !important;
+}
+
+html.light button[data-variant='ghost']:hover {
+  background-color: rgba(148, 163, 184, 0.18) !important;
 }

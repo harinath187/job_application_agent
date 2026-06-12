@@ -91,9 +91,9 @@ export function SearchHistory() {
     <main className="mx-auto max-w-6xl px-6 py-10">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.24em] text-indigo-300">Search activity</p>
-          <h1 className="mt-2 text-3xl font-semibold text-white">Search History</h1>
-          <p className="mt-2 max-w-2xl text-sm text-gray-400">Reopen any prior search to restore the original resume, role, and location used for that job run.</p>
+          <p className="text-sm uppercase tracking-[0.24em] text-indigo-300 dark:text-indigo-300">Search activity</p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">Search History</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-gray-400">Reopen any prior search to restore the original resume, role, and location used for that job run.</p>
         </div>
         <Button onClick={() => navigate('/')} variant="secondary">Upload New Resume</Button>
       </div>
@@ -103,7 +103,7 @@ export function SearchHistory() {
       <section className="mt-6 rounded-[2rem] border border-gray-800 bg-gray-900 p-6">
         {history.length > 0 && (
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-sm text-gray-400">
+            <div className="text-sm text-slate-600 dark:text-gray-400">
               {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'No items selected'}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -116,11 +116,11 @@ export function SearchHistory() {
           </div>
         )}
         {loading ? (
-          <div className="py-12 text-center text-sm text-gray-400">Loading search history...</div>
+          <div className="py-12 text-center text-sm text-slate-600 dark:text-gray-400">Loading search history...</div>
         ) : history.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-gray-700 bg-gray-950 p-10 text-center">
-            <p className="text-lg font-medium text-white">No search history yet</p>
-            <p className="mt-2 text-sm text-gray-400">Your past job searches will appear here after you upload a resume and start a search.</p>
+            <p className="text-lg font-medium text-slate-900 dark:text-white">No search history yet</p>
+            <p className="mt-2 text-sm text-slate-600 dark:text-gray-400">Your past job searches will appear here after you upload a resume and start a search.</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -130,7 +130,7 @@ export function SearchHistory() {
                 className="w-full rounded-3xl border border-gray-800 bg-gray-950 p-5 text-left transition hover:border-indigo-500 hover:bg-gray-900"
               >
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <label className="flex items-center gap-3 text-sm text-gray-300">
+                  <label className="flex items-center gap-3 text-sm text-slate-700 dark:text-gray-300">
                     <input
                       type="checkbox"
                       checked={selectedIds.includes(item.session_id)}
@@ -155,28 +155,28 @@ export function SearchHistory() {
                       <FileText size={18} className="mt-1 text-indigo-300" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Resume</p>
-                        <p className="mt-1 text-sm text-white">{item.resume_name || item.resume_path || 'Unknown resume'}</p>
+                        <p className="mt-1 text-sm text-slate-900 dark:text-white">{item.resume_name || item.resume_path || 'Unknown resume'}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <User size={18} className="mt-1 text-indigo-300" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Role</p>
-                        <p className="mt-1 text-sm text-white">{item.role}</p>
+                        <p className="mt-1 text-sm text-slate-900 dark:text-white">{item.role}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <MapPin size={18} className="mt-1 text-indigo-300" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Location</p>
-                        <p className="mt-1 text-sm text-white">{item.location}</p>
+                        <p className="mt-1 text-sm text-slate-900 dark:text-white">{item.location}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <Clock3 size={18} className="mt-1 text-indigo-300" />
                       <div>
                         <p className="text-xs uppercase tracking-[0.2em] text-gray-500">Search time</p>
-                        <p className="mt-1 text-sm text-white">{new Date(item.created_at).toLocaleString()}</p>
+                        <p className="mt-1 text-sm text-slate-900 dark:text-white">{new Date(item.created_at).toLocaleString()}</p>
                       </div>
                     </div>
                   </div>

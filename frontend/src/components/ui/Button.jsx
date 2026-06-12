@@ -13,7 +13,7 @@ export function Button({ label, children, onClick, variant = 'primary', disabled
   const styleClass = `${baseStyles} ${variantStyles[variant] || variantStyles.primary} ${disabledStyles}`
 
   return (
-    <button type={type} className={styleClass} onClick={onClick} disabled={disabled || loading}>
+    <button type={type} className={styleClass} data-variant={variant} onClick={onClick} disabled={disabled || loading}>
       {loading ? (
         <span className="inline-flex items-center gap-2">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

@@ -31,15 +31,15 @@ export function UploadBox({ onFileSelect, isProcessing }) {
   }
 
   return (
-    <label className={`group relative block cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed ${isProcessing ? 'border-gray-700 bg-gray-900/80' : 'border-gray-700 bg-gray-950 hover:border-indigo-500'} p-10 text-center transition`}>
+    <label className={`group relative block cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed ${isProcessing ? 'border-gray-700 bg-gray-900/80' : 'border-gray-700 bg-gray-950 hover:border-indigo-500'} p-10 text-center transition dark:border-gray-700 dark:bg-gray-950 dark:hover:border-indigo-500`}>
       <input type="file" className="sr-only" accept="application/pdf" onChange={handleChange} disabled={isProcessing} />
       <div onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
         <div className="mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-gray-800 text-indigo-400 transition group-hover:bg-gray-700">
           <CloudUpload size={32} />
         </div>
-        <h2 className="text-xl font-semibold text-white">Drag your resume PDF here</h2>
-        <p className="mt-2 text-sm text-gray-400">or click to browse</p>
-        {isProcessing && <p className="mt-4 text-sm font-medium text-amber-300">Processing...</p>}
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Drag your resume PDF here</h2>
+        <p className="mt-2 text-sm text-slate-600 dark:text-gray-400">or click to browse</p>
+        {isProcessing && <p className="mt-4 text-sm font-medium text-amber-600 dark:text-amber-300">Processing...</p>}
       </div>
     </label>
   )
