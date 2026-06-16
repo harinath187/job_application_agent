@@ -32,9 +32,14 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS sessions (
                 session_id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,
+                experience TEXT,
                 created_at TEXT NOT NULL
             )
         """)
+        cursor.execute("PRAGMA table_info(sessions)")
+        session_columns = {row[1] for row in cursor.fetchall()}
+        if "experience" not in session_columns:
+            cursor.execute("ALTER TABLE sessions ADD COLUMN experience TEXT")
 
         # Create search history table
         cursor.execute("""
@@ -182,7 +187,7 @@ def insert_session(session_id: str, status: str) -> None:
         conn.commit()
 
 
-def insert_search_history(session_id: str, resume_name: str, resume_path: str, role: str, location: str) -> None:
+def insert_search_history(session_id: str, resume_name: str, resume_path: str, role: str, location: str, experience: str | None = None) -> None:
     """Persist the criteria used for a search session."""
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -197,6 +202,10 @@ def insert_search_history(session_id: str, resume_name: str, resume_path: str, r
                    role = excluded.role,
                    location = excluded.location""",
             (session_id, resume_name, resume_path, role, location, created_at)
+        )
+        cursor.execute(
+            "UPDATE sessions SET experience = ? WHERE session_id = ?",
+            (experience, session_id)
         )
         conn.commit()
 
@@ -258,7 +267,7 @@ def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
         if session_id:
             cursor.execute(
                 """SELECT sh.session_id, sh.resume_name, sh.resume_path, sh.role, sh.location,
-                          sh.created_at, s.status
+                          sh.created_at, s.status, s.experience
                    FROM search_history sh
                    LEFT JOIN sessions s ON s.session_id = sh.session_id
                    WHERE sh.session_id = ?
@@ -268,7 +277,7 @@ def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
         else:
             cursor.execute(
                 """SELECT sh.session_id, sh.resume_name, sh.resume_path, sh.role, sh.location,
-                          sh.created_at, s.status
+                          sh.created_at, s.status, s.experience
                    FROM search_history sh
                    LEFT JOIN sessions s ON s.session_id = sh.session_id
                    ORDER BY sh.created_at DESC"""
@@ -352,6 +361,17 @@ def update_session_status(session_id: str, status: str) -> None:
         cursor.execute(
             "UPDATE sessions SET status = ? WHERE session_id = ?",
             (status, session_id)
+        )
+        conn.commit()
+
+
+def update_session_experience(session_id: str, experience: str | None) -> None:
+    """Persist the optional user experience on a session."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE sessions SET experience = ? WHERE session_id = ?",
+            (experience, session_id)
         )
         conn.commit()
 

@@ -11,13 +11,13 @@ export function AlertOptIn({ isComplete, alertsEnabled, alertEmail, alertMessage
         </div>
         <div>
           <p className="text-sm uppercase tracking-[0.24em] text-indigo-300">Job Alerts</p>
-          <h2 className="mt-2 text-xl font-semibold text-white">
+          <h2 className="mt-2 text-xl font-semibold text-indigo-300">
             {alertsEnabled ? 'Email alerts enabled automatically' : 'Email alerts not enabled'}
           </h2>
           <p className="mt-2 text-sm text-gray-400">
             {alertMessage || (alertsEnabled ? `New job matches will be sent to ${alertEmail}.` : 'No email address was found in the uploaded resume.')}
           </p>
-          {alertEmail && <p className="mt-3 text-sm text-emerald-300">{alertEmail}</p>}
+          {alertEmail && <p className="mt-3 text-sm text-indigo-300">{alertEmail}</p>}
         </div>
       </div>
     </section>

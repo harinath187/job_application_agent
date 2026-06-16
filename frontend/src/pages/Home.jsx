@@ -5,12 +5,15 @@ import { UploadBox } from '../components/dashboard/UploadBox.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
 
+const EXPERIENCE_OPTIONS = ['Entry level', '1-3 years', '3-5 years', '5+ years']
+
 export function Home() {
   const navigate = useNavigate()
   const { startAgent } = useJobAgent()
   const [selectedFile, setSelectedFile] = useState(null)
   const [role, setRole] = useState('')
   const [location, setLocation] = useState('')
+  const [experience, setExperience] = useState('')
   const [error, setError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [uploadKey, setUploadKey] = useState(0)
@@ -41,7 +44,12 @@ export function Home() {
     setIsProcessing(true)
 
     try {
-      const sessionId = await startAgent({ file: selectedFile, role: role.trim(), location: location.trim() })
+      const sessionId = await startAgent({
+        file: selectedFile,
+        role: role.trim(),
+        location: location.trim(),
+        experience: experience.trim()
+      })
       const query = new URLSearchParams({ jobReferenceId: sessionId }).toString()
       navigate(`/dashboard?${query}`)
     } catch (uploadError) {
@@ -93,7 +101,7 @@ export function Home() {
                     value={role}
                     onChange={(event) => setRole(event.target.value)}
                     required
-                    className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
+                    className="mt-2 w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                     placeholder="e.g. Product Manager"
                     disabled={isProcessing}
                   />
@@ -106,12 +114,34 @@ export function Home() {
                     value={location}
                     onChange={(event) => setLocation(event.target.value)}
                     required
-                    className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
+                    className="mt-2 w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                     placeholder="e.g. New York, NY"
                     disabled={isProcessing}
                   />
                 </label>
               </div>
+
+              <label className="block text-left text-sm font-medium text-slate-700 dark:text-gray-300">
+                Experience (optional)
+                <select
+                  value={experience}
+                  onChange={(event) => setExperience(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
+                  disabled={isProcessing}
+                >
+                  <option value="" className="text-slate-900">
+                    Auto / not specified
+                  </option>
+                  {EXPERIENCE_OPTIONS.map((option) => (
+                    <option key={option} value={option} className="text-slate-900">
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-2 text-xs text-slate-500 dark:text-gray-500">
+                  Optional. Leave this blank to let the parser infer experience from the resume.
+                </p>
+              </label>
 
               <div className="flex justify-center">
                 <Button

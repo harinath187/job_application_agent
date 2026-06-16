@@ -19,7 +19,7 @@ export function StatusBar({ status, jobsTotal, jobsComplete }) {
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm uppercase tracking-[0.24em] text-gray-500">Pipeline status</p>
-          <h3 className="mt-2 text-xl font-semibold text-white">{stageLabel(status)}</h3>
+          <h3 className="mt-2 text-xl font-semibold text-indigo-300">{stageLabel(status)}</h3>
         </div>
         <div className="rounded-full bg-gray-800 px-4 py-2 text-sm font-semibold text-gray-300">
           {jobsComplete} of {jobsTotal} jobs complete

@@ -28,20 +28,43 @@ def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
     role = state.get("extracted_role", "").strip()
     location = state.get("extracted_location", "").strip()
     experience_years = state.get("extracted_experience_years", 0)
+    experience = state.get("user_experience") or state.get("extracted_experience")
     if not role:
         return {**state, "jobs": []}
 
-    jobs = _fetch_jobs(f"{role} {location}".strip(), wanted=MAX_RESULTS, candidate_experience_years=experience_years)
+    jobs = _fetch_jobs(_build_query(role, location, experience), wanted=MAX_RESULTS, candidate_experience_years=experience_years)
     logger.info("Fetched %s jobs for %s in %s", len(jobs), role, location)
     return {**state, "jobs": jobs}
 
 
-def scrape_jobs(role: str, location: str, candidate_experience_years: int = 999) -> list[dict]:
+def _experience_keyword(experience: str | None) -> str:
+    """Map the provided experience text to a search-friendly keyword."""
+    normalized = (experience or "").strip().lower()
+    if not normalized:
+        return ""
+    if "entry" in normalized or "intern" in normalized or "fresher" in normalized:
+        return "entry level"
+    if "1-3" in normalized or "1 to 3" in normalized or "junior" in normalized:
+        return "junior"
+    if "3-5" in normalized or "3 to 5" in normalized or "mid" in normalized:
+        return "mid level"
+    if "5+" in normalized or "5 plus" in normalized or "senior" in normalized:
+        return "senior"
+    return experience.strip()
+
+
+def _build_query(role: str, location: str, experience: str | None = None) -> str:
+    """Build the SerpApi query string while keeping experience optional."""
+    query_parts = [part.strip() for part in [role, _experience_keyword(experience), location] if part and part.strip()]
+    return " ".join(query_parts).strip()
+
+
+def scrape_jobs(role: str, location: str, candidate_experience_years: int = 999, experience: str | None = None) -> list[dict]:
     if not SERPAPI_KEY:
         logger.warning("SERPAPI_KEY not configured; job scraping is disabled. Returning empty job list.")
         return []
 
-    query = f"{role.strip()} {location.strip()}".strip()
+    query = _build_query(role, location, experience)
     if not query:
         return []
     return _fetch_jobs(query, wanted=MAX_RESULTS, candidate_experience_years=candidate_experience_years)

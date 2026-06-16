@@ -10,12 +10,15 @@ const http = axios.create({
   }
 })
 
-async function uploadResume(file, role, location) {
+async function uploadResume(file, role, location, experience = '') {
   try {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('role', role)
     formData.append('location', location)
+    if (experience && experience.trim()) {
+      formData.append('experience', experience.trim())
+    }
 
     const response = await http.post('/upload', formData, {
       headers: {

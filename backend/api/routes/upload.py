@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from orchestrator.graph import build_graph
 from orchestrator.state import AgentState
 from utils.file_helpers import save_upload, RESUMES_DIR, get_relative_path
-from utils.db import insert_session, insert_job, insert_search_history, update_job_status, update_session_status
+from utils.db import insert_session, insert_job, insert_search_history, update_job_status, update_session_status, update_session_experience
 
 
 logging.basicConfig(level=logging.INFO)
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["upload"])
 
 
-def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str) -> None:
+def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str, experience: str | None) -> None:
     """
     Background task that runs the LangGraph agent pipeline.
     Jobs are inserted and updated in the database incrementally as they are processed.
@@ -28,6 +28,7 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str)
         pdf_path: Path to the uploaded resume PDF
         role: Job title / role provided by the user
         location: Location provided by the user
+        experience: Optional experience string provided by the user
     """
     try:
         # Build and run the graph
@@ -39,11 +40,13 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str)
             "resume_text": "",
             "extracted_role": role,
             "extracted_location": location,
+            "user_experience": experience,
             "extracted_email": None,
             "alerts_enabled": False,
             "alert_message": "Email alerts pending resume parsing",
             "extracted_skills": [],
             "extracted_experience_years": 0,
+            "extracted_experience": None,
             "jobs": [],
             "tailored_resumes": [],
             "cover_letter_paths": []
@@ -66,7 +69,8 @@ async def upload_resume(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     role: str = Form(...),
-    location: str = Form(...)
+    location: str = Form(...),
+    experience: str | None = Form(None)
 ) -> JSONResponse:
     """
     Upload a resume PDF and trigger the agent pipeline.
@@ -76,6 +80,7 @@ async def upload_resume(
         background_tasks: FastAPI background tasks
         role: Role provided by the user
         location: Location provided by the user
+        experience: Optional experience provided by the user
     
     Returns:
         JSON with session_id and status
@@ -97,10 +102,11 @@ async def upload_resume(
         
         # Create session in database
         insert_session(session_id, "processing")
-        insert_search_history(session_id, file.filename, pdf_path, role, location)
+        insert_search_history(session_id, file.filename, pdf_path, role, location, experience)
+        update_session_experience(session_id, experience)
         
         # Add background task to run pipeline
-        background_tasks.add_task(run_agent_pipeline, session_id, pdf_path, role, location)
+        background_tasks.add_task(run_agent_pipeline, session_id, pdf_path, role, location, experience)
         
         logger.info(f"Created session {session_id} for resume upload")
         

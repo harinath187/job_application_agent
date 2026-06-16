@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
 from typing import Dict, Any
 
 from groq import Groq
@@ -102,8 +103,56 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
     return {
         "skills": skills,
         "experience_years": experience_years,
+        "experience": _format_experience_summary(experience_years) if experience_years else None,
         "email": extract_email_from_text(resume_text)
     }
+
+
+def _format_experience_summary(years: int) -> str:
+    """Convert inferred years into a user-facing experience bucket."""
+    if years <= 1:
+        return "Entry level"
+    if years <= 3:
+        return "1-3 years"
+    if years <= 5:
+        return "3-5 years"
+    return "5+ years"
+
+
+def _year_from_date_string(date_text: str) -> int | None:
+    """Extract a year from a resume date string when possible."""
+    if not date_text:
+        return None
+    match = re.search(r"(19|20)\d{2}", date_text)
+    return int(match.group(0)) if match else None
+
+
+def _infer_experience_from_resume_text(resume_text: str) -> tuple[int, str | None]:
+    """Infer total years of experience from work-history date ranges in resume text."""
+    if not resume_text:
+        return 0, None
+
+    normalized = re.sub(r"\s+", " ", resume_text)
+    patterns = [
+        r"(?P<start>(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})\s*[-–—to]+\s*(?P<end>Present|Current|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{4})",
+        r"(?P<start>(?:19|20)\d{2})\s*[-–—to]+\s*(?P<end>Present|Current|(?:19|20)\d{2})",
+    ]
+
+    total_months = 0
+    for pattern in patterns:
+        for match in re.finditer(pattern, normalized, re.IGNORECASE):
+            start_year = _year_from_date_string(match.group("start"))
+            end_text = match.group("end")
+            end_year = datetime.utcnow().year if re.search(r"present|current", end_text, re.IGNORECASE) else _year_from_date_string(end_text)
+            if start_year is None or end_year is None or end_year < start_year:
+                continue
+            total_months += max(0, (end_year - start_year) * 12)
+
+    if total_months <= 0:
+        return 0, None
+
+    experience_years = max(1, round(total_months / 12))
+    return experience_years, _format_experience_summary(experience_years)
 
 
 def parse_resume(pdf_path: str) -> Dict[str, Any]:
@@ -122,7 +171,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         
         if not resume_text.strip():
             logger.warning(f"No text extracted from {pdf_path}")
-            return {"skills": [], "experience_years": 0, "email": None}
+            return {"skills": [], "experience_years": 0, "experience": None, "email": None}
         
         # Try Groq first, fall back to heuristic parsing if unavailable or fails
         try:
@@ -137,12 +186,13 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                         "content": f"""Analyze this resume and extract ONLY the following information in valid JSON format:
 - skills: list of 5-8 key technical or professional skills mentioned
 - experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
+- experience: a short bucket such as Entry level, 1-3 years, 3-5 years, or 5+ years.
 
 Resume text:
 {resume_text}
 
 Return ONLY valid JSON with no additional text. Example format:
-{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"], "experience_years": 5}}"""
+{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"], "experience_years": 5, "experience": "3-5 years"}}"""
                     }
                 ]
             )
@@ -185,10 +235,18 @@ Return ONLY valid JSON with no additional text. Example format:
                 experience_years = int(experience_years) if experience_years else 0
             except (ValueError, TypeError):
                 experience_years = 0
+
+            extracted_experience = extracted_data.get("experience")
+            if not isinstance(extracted_experience, str) or not extracted_experience.strip():
+                inferred_years, inferred_experience = _infer_experience_from_resume_text(resume_text)
+                if not experience_years and inferred_years:
+                    experience_years = inferred_years
+                extracted_experience = inferred_experience or _format_experience_summary(experience_years)
             
             return {
                 "skills": skills,
                 "experience_years": experience_years,
+                "experience": extracted_experience,
                 "email": extract_email_from_text(resume_text)
             }
         
@@ -199,7 +257,7 @@ Return ONLY valid JSON with no additional text. Example format:
         
     except Exception as e:
         logger.error(f"Error parsing resume: {e}")
-        return {"skills": [], "experience_years": 0, "email": None}
+        return {"skills": [], "experience_years": 0, "experience": None, "email": None}
 
 
 def get_resume_text(pdf_path: str) -> str:

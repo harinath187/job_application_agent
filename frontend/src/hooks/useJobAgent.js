@@ -166,14 +166,14 @@ export function JobAgentProvider({ children }) {
   )
 
   const startAgent = useCallback(
-    async ({ file, role, location }) => {
+    async ({ file, role, location, experience }) => {
       try {
         setError('')
         setIsProcessing(true)
         setStatus('Parsing resume...')
         setAlertInfo({ alertsEnabled: false, alertEmail: null, alertMessage: '' })
 
-        const response = await agentApi.uploadResume(file, role, location)
+        const response = await agentApi.uploadResume(file, role, location, experience)
         const session = response.jobReferenceId || response.session_id || response.sessionId || ''
 
         setSessionId(session)

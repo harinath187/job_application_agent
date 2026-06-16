@@ -45,8 +45,9 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     state["extracted_email"] = extracted_email
     state["extracted_skills"] = parsed_data.get("skills", [])
     state["extracted_experience_years"] = parsed_data.get("experience_years", 0)
+    state["extracted_experience"] = parsed_data.get("experience")
     
-    logger.info(f"Extracted skills={state['extracted_skills']} experience_years={state['extracted_experience_years']} email={extracted_email} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
+    logger.info(f"Extracted skills={state['extracted_skills']} experience_years={state['extracted_experience_years']} experience={state.get('extracted_experience')} email={extracted_email} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
     
     return state
 
@@ -103,7 +104,8 @@ def scraper_node(state: AgentState) -> AgentState:
     logger.info(f"Scraping jobs for: {role} in {location}")
     
     experience_years = state.get("extracted_experience_years", 0)
-    jobs = scrape_jobs(role=role, location=location, candidate_experience_years=experience_years)
+    experience = state.get("user_experience") or state.get("extracted_experience")
+    jobs = scrape_jobs(role=role, location=location, candidate_experience_years=experience_years, experience=experience)
     
     logger.info(f"Found {len(jobs)} jobs")
     

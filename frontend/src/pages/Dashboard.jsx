@@ -43,7 +43,7 @@ export function Dashboard() {
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.28em] text-indigo-300">Pipeline overview</p>
-                <h1 className="mt-3 text-3xl font-semibold text-white">Processing your tailored applications</h1>
+                <h1 className="mt-3 text-3xl font-semibold text-indigo-300">Processing your tailored applications</h1>
                 <p className="mt-3 max-w-2xl text-gray-400">This page polls the backend for live updates as the agent sources jobs, tailors resumes, and generates cover letters.</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
