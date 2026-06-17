@@ -24,18 +24,30 @@ Job Application Agent is an AI-powered job application automation system that he
 - LLM-powered flows with safe fallbacks when keys are not configured
 
 ## Architecture
+
 ```mermaid
 flowchart LR
-  U[Frontend Upload] -->|POST /api/upload| API[FastAPI Backend]
-  API --> Orch[Orchestrator (LangGraph)]
-  Orch --> PDF[PDF Parser Agent]
-  Orch --> Scrape[Job Scraper Agent]
-  Orch --> Tailor[Resume Tailor Agent]
-  Orch --> CL[Cover Letter Agent]
-  Tailor --> Outputs[(outputs/resumes)]
-  CL --> OutputsCL[(outputs/cover_letters)]
-  API --> DB[SQLite DB (data/jobs.db)]
-  API --> Downloads[/api/download]
+    U["Frontend"] -->|Upload Resume| API["FastAPI Backend"]
+
+    API --> Orch["LangGraph Orchestrator"]
+
+    subgraph Agents
+        PDF["PDF Parser"]
+        Scrape["Job Scraper"]
+        Tailor["Resume Tailor"]
+        CL["Cover Letter Generator"]
+    end
+
+    Orch --> PDF
+    Orch --> Scrape
+    Orch --> Tailor
+    Orch --> CL
+
+    Tailor --> Resumes["outputs/resumes"]
+    CL --> Letters["outputs/cover_letters"]
+
+    API --> DB["SQLite Database"]
+    API --> Download["Download API"]
 ```
 
 ## Component Descriptions
