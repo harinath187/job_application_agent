@@ -1,11 +1,10 @@
 import PropTypes from 'prop-types'
 
 const variants = {
-  new: 'bg-gray-700 text-gray-300',
-  processing: 'bg-amber-500/20 text-amber-400',
-  tailored: 'bg-indigo-500/20 text-indigo-400',
-  complete: 'bg-emerald-500/20 text-emerald-400',
-  failed: 'bg-red-500/20 text-red-400'
+  new: 'bg-blue-100 text-blue-700',
+  applied: 'bg-yellow-100 text-yellow-700',
+  interview: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700'
 }
 
 export function Badge({ label, variant = 'new' }) {
@@ -14,5 +13,5 @@ export function Badge({ label, variant = 'new' }) {
 
 Badge.propTypes = {
   label: PropTypes.string.isRequired,
-  variant: PropTypes.oneOf(['new', 'processing', 'tailored', 'complete', 'failed'])
+  variant: PropTypes.oneOf(['new', 'applied', 'interview', 'rejected'])
 }

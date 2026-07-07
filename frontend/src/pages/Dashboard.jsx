@@ -1,10 +1,11 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar.jsx'
 import { StatusBar } from '../components/dashboard/StatusBar.jsx'
 import { JobCard } from '../components/dashboard/JobCard.jsx'
 import { ResumePreview } from '../components/dashboard/ResumePreview.jsx'
 import { CoverLetterPreview } from '../components/dashboard/CoverLetterPreview.jsx'
+import { InterviewPrepModal } from '../components/dashboard/InterviewPrepModal.jsx'
 import { AlertOptIn } from '../components/dashboard/AlertOptIn.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
@@ -13,10 +14,44 @@ export function Dashboard() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const jobReferenceId = searchParams.get('jobReferenceId')
-  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload } = useJobAgent()
+  const { sessionId, jobs, statusMessage, isComplete, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload } = useJobAgent()
+  const [locationFilter, setLocationFilter] = useState('')
+  const [sortBy, setSortBy] = useState('match')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [prepJobId, setPrepJobId] = useState('')
 
-  const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete').length, [jobs])
-  const isComplete = status === 'Complete!'
+  const jobsComplete = useMemo(() => jobs.filter((job) => job.resume_path && job.cover_letter_path).length, [jobs])
+  const locations = useMemo(
+    () => Array.from(new Set(jobs.map((job) => job.location).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [jobs]
+  )
+
+  const displayedJobs = useMemo(
+    () =>
+      [...jobs]
+        .filter((job) => !locationFilter || job.location === locationFilter)
+        .filter((job) => {
+          if (!searchQuery) return true
+          const query = searchQuery.toLowerCase()
+          return (job.title || '').toLowerCase().includes(query) || (job.company || '').toLowerCase().includes(query)
+        })
+        .sort((a, b) =>
+          sortBy === 'match'
+            ? (b.match_pct ?? 0) - (a.match_pct ?? 0)
+            : sortBy === 'newest'
+              ? new Date(b.created_at || 0) - new Date(a.created_at || 0)
+              : (a.company || '').localeCompare(b.company || '')
+        ),
+    [jobs, locationFilter, searchQuery, sortBy]
+  )
+
+  const hasActiveFilters = Boolean(locationFilter || searchQuery || sortBy !== 'match')
+
+  const clearFilters = () => {
+    setLocationFilter('')
+    setSortBy('match')
+    setSearchQuery('')
+  }
 
   useEffect(() => {
     const activeSession = jobReferenceId || sessionId
@@ -55,7 +90,7 @@ export function Dashboard() {
             </div>
           </div>
 
-          <StatusBar status={status} jobsTotal={jobs.length} jobsComplete={jobsComplete} />
+          <StatusBar statusMessage={statusMessage} isComplete={isComplete} />
           {error && <div className="rounded-3xl border border-red-700 bg-red-950 p-4 text-sm text-red-200">{error}</div>}
           <AlertOptIn
             isComplete={isComplete}
@@ -66,15 +101,74 @@ export function Dashboard() {
 
           <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
             <section className="space-y-6">
-              {jobs.map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={job}
-                  onDownloadResume={handleDownload}
-                  onDownloadCoverLetter={handleDownload}
-                  onViewDetail={handleViewDetail}
-                />
-              ))}
+              <div className="flex flex-wrap gap-3 mb-6">
+                <select
+                  value={locationFilter}
+                  onChange={(event) => setLocationFilter(event.target.value)}
+                  className={`rounded-lg border border-gray-200 px-3 py-2 text-sm text-slate-900 outline-none ${locationFilter ? 'ring-2 ring-blue-500' : ''}`}
+                >
+                  <option value="">All locations</option>
+                  {locations.map((location) => (
+                    <option key={location} value={location}>
+                      {location}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value)}
+                  className={`rounded-lg border border-gray-200 px-3 py-2 text-sm text-slate-900 outline-none ${sortBy !== 'match' ? 'ring-2 ring-blue-500' : ''}`}
+                >
+                  <option value="match">Best match</option>
+                  <option value="newest">Newest first</option>
+                  <option value="company">Company A–Z</option>
+                </select>
+
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search title or company"
+                    className={`rounded-lg border border-gray-200 px-3 py-2 pr-9 text-sm text-slate-900 outline-none ${searchQuery ? 'ring-2 ring-blue-500' : ''}`}
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-lg leading-none text-slate-500 hover:text-slate-800"
+                      aria-label="Clear search"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {displayedJobs.length === 0 && hasActiveFilters ? (
+                <div className="rounded-3xl border border-gray-800 bg-gray-900 p-6 text-sm text-gray-300">
+                  <p>No jobs match your filters.</p>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-4 inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              ) : (
+                displayedJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    onDownloadResume={handleDownload}
+                    onDownloadCoverLetter={handleDownload}
+                    onViewDetail={handleViewDetail}
+                    onPrepInterview={setPrepJobId}
+                  />
+                ))
+              )}
             </section>
             <aside className="space-y-6">
               <ResumePreview resumeUrl={jobsComplete > 0 ? jobs.find((job) => job.resume_path)?.resume_path : ''} />
@@ -83,6 +177,7 @@ export function Dashboard() {
           </div>
         </div>
       </main>
+      <InterviewPrepModal jobId={prepJobId} isOpen={Boolean(prepJobId)} onClose={() => setPrepJobId('')} />
     </div>
   )
 }

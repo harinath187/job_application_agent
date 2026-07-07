@@ -6,14 +6,19 @@ const baseURL = API_BASE_URL ? `${API_BASE_URL.replace(/\/$/, '')}${API_BASE_PAT
 const http = axios.create({
   baseURL,
   headers: {
-    'Content-Type': 'application/json'
+    Accept: 'application/json'
   }
 })
 
-async function uploadResume(file, role, location, experience = '') {
+async function uploadResume({ file = null, resumeId = '', role, location, experience = '' }) {
   try {
     const formData = new FormData()
-    formData.append('file', file)
+    if (file) {
+      formData.append('file', file)
+    }
+    if (resumeId) {
+      formData.append('resume_id', resumeId)
+    }
     formData.append('role', role)
     formData.append('location', location)
     if (experience && experience.trim()) {
@@ -21,14 +26,30 @@ async function uploadResume(file, role, location, experience = '') {
     }
 
     const response = await http.post('/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
+      headers: {}
     })
 
     return response.data
   } catch (error) {
     console.error('uploadResume error', error)
+    throw error
+  }
+}
+
+async function saveResume(file, label = '', extractedRole = '', extractedLocation = '') {
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (label) formData.append('label', label)
+    if (extractedRole) formData.append('extracted_role', extractedRole)
+    if (extractedLocation) formData.append('extracted_location', extractedLocation)
+
+    const response = await http.post('/resumes', formData, {
+      headers: {}
+    })
+    return response.data
+  } catch (error) {
+    console.error('saveResume error', error)
     throw error
   }
 }
@@ -53,6 +74,36 @@ async function getJobDetail(jobId) {
     return response.data
   } catch (error) {
     console.error('getJobDetail error', error)
+    throw error
+  }
+}
+
+async function getJobSkillsGap(jobId) {
+  try {
+    const response = await http.get(`/jobs/${jobId}/skills-gap`)
+    return response.data
+  } catch (error) {
+    console.error('getJobSkillsGap error', error)
+    throw error
+  }
+}
+
+async function getJobInterviewPrep(jobId) {
+  try {
+    const response = await http.get(`/jobs/${jobId}/interview-prep`)
+    return response.data
+  } catch (error) {
+    console.error('getJobInterviewPrep error', error)
+    throw error
+  }
+}
+
+async function regenerateJobInterviewPrep(jobId) {
+  try {
+    const response = await http.post(`/jobs/${jobId}/interview-prep/regenerate`)
+    return response.data
+  } catch (error) {
+    console.error('regenerateJobInterviewPrep error', error)
     throw error
   }
 }
@@ -113,6 +164,50 @@ async function getSearchHistoryItem(sessionId) {
   }
 }
 
+async function listResumes() {
+  try {
+    const response = await http.get('/resumes')
+    return response.data
+  } catch (error) {
+    console.error('listResumes error', error)
+    throw error
+  }
+}
+
+async function renameResume(resumeId, label) {
+  try {
+    const formData = new FormData()
+    formData.append('label', label)
+    const response = await http.patch(`/resumes/${resumeId}`, formData, {
+      headers: {}
+    })
+    return response.data
+  } catch (error) {
+    console.error('renameResume error', error)
+    throw error
+  }
+}
+
+async function deleteResume(resumeId) {
+  try {
+    const response = await http.delete(`/resumes/${resumeId}`)
+    return response.data
+  } catch (error) {
+    console.error('deleteResume error', error)
+    throw error
+  }
+}
+
+async function updateJobStatus(jobId, status) {
+  try {
+    const response = await http.patch(`/jobs/${jobId}/status`, { status })
+    return response.data
+  } catch (error) {
+    console.error('updateJobStatus error', error)
+    throw error
+  }
+}
+
 async function deleteSearchHistoryItem(sessionId) {
   try {
     const response = await http.delete(`/search-history/${sessionId}`)
@@ -167,12 +262,20 @@ async function unsubscribe(email) {
 
 export const agentApi = {
   uploadResume,
+  saveResume,
   getJobStatus,
+  listResumes,
+  renameResume,
+  deleteResume,
   getSearchHistory,
   getSearchHistoryItem,
   deleteSearchHistoryItem,
   deleteSearchHistoryItems,
   getJobDetail,
+  getJobSkillsGap,
+  getJobInterviewPrep,
+  regenerateJobInterviewPrep,
+  updateJobStatus,
   downloadFile,
   subscribeToAlerts,
   getActiveAlertUsers,

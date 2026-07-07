@@ -11,6 +11,8 @@ from typing import Any
 import requests
 from dotenv import load_dotenv
 
+from agents.salary_agent import enrich_salary
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,6 +24,53 @@ MAX_POOL_SIZE = 50
 MAX_RESULTS = 10
 MIN_DESCRIPTION_LENGTH = 200
 REQUEST_DELAY = 1.5
+
+
+def extract_salary(job_row) -> dict | None:
+    """
+    Returns {"min": int, "max": int, "interval": str} if JobSpy provided salary data,
+    otherwise None. Checks min_amount/max_amount/interval columns on the DataFrame row.
+    """
+    if job_row is None:
+        return None
+
+    def _get_value(key: str):
+        if isinstance(job_row, dict):
+            return job_row.get(key)
+        return getattr(job_row, key, None)
+
+    min_amount = _get_value("min_amount")
+    max_amount = _get_value("max_amount")
+    interval = _get_value("interval")
+
+    if min_amount is None and max_amount is None and not interval:
+        return None
+
+    try:
+        min_val = int(float(min_amount)) if min_amount not in (None, "") else None
+    except (TypeError, ValueError):
+        min_val = None
+
+    try:
+        max_val = int(float(max_amount)) if max_amount not in (None, "") else None
+    except (TypeError, ValueError):
+        max_val = None
+
+    interval_text = str(interval).strip().lower() if interval else ""
+    if interval_text not in {"yearly", "monthly", "hourly"}:
+        interval_text = ""
+
+    if min_val is None and max_val is None and not interval_text:
+        return None
+
+    payload = {}
+    if min_val is not None:
+        payload["min"] = min_val
+    if max_val is not None:
+        payload["max"] = max_val
+    if interval_text:
+        payload["interval"] = interval_text
+    return payload or None
 
 
 def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
@@ -151,6 +200,13 @@ def _normalise(raw: dict) -> dict:
                 except (ValueError, IndexError):
                     continue
     
+    salary = extract_salary(raw)
+    if salary is None:
+        try:
+            salary = enrich_salary(raw.get("title", ""), raw.get("location", ""))
+        except Exception:
+            salary = None
+
     return {
         "title": raw.get("title", "").strip(),
         "company": raw.get("company_name", "").strip(),
@@ -161,6 +217,7 @@ def _normalise(raw: dict) -> dict:
         "source": "google_jobs",
         "job_id": raw.get("job_id", ""),
         "required_experience_years": required_experience,
+        "salary": salary,
     }
 
 

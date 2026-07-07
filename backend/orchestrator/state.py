@@ -9,6 +9,7 @@ class AgentState(TypedDict):
     Represents the state shared across all agents in the LangGraph pipeline.
     """
     session_id: str  # Session ID for tracking and database updates
+    resume_id: str | None  # Saved resume version used for this session, if any
     resume_path: str  # Path to uploaded PDF resume
     resume_text: str  # Extracted text from resume
     extracted_role: str  # Job role/title provided by the user
@@ -22,4 +23,7 @@ class AgentState(TypedDict):
     extracted_experience: str | None  # Human-readable experience summary inferred from the resume
     jobs: List[dict]  # List of scraped jobs
     tailored_resumes: List[dict]  # List of tailored resume data and file paths
+    ats_scores: dict[str, dict]  # ATS scores keyed by job id
+    skills_gap_results: dict[str, dict]  # Skills gap analysis keyed by job id
+    interview_prep_results: dict[str, dict]  # Interview prep keyed by job id
     cover_letter_paths: List[str]  # List of generated cover letter file paths

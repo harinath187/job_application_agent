@@ -101,7 +101,7 @@ flowchart LR
 - Node.js 18+ (frontend)
 - pip, npm/yarn
 - Optional: `GROQ_API_KEY` for LLM features
-- Optional: `SERPAPI_KEY` for job scraping
+- Optional: `SERPAPI_KEY` for job scraping and salary enrichment
 
 ### Clone Repository
 ```bash
@@ -140,7 +140,7 @@ SMTP_FROM=alerts@example.com
 ### Description Of Variables
 - `PORT`: Backend port, default `8000`.
 - `GROQ_API_KEY`: Groq LLM API key; optional. Agents fall back to heuristics/templates when absent.
-- `SERPAPI_KEY`: SerpApi key for job scraping; optional. When absent, scraper returns an empty job list.
+- `SERPAPI_KEY`: SerpApi key for job scraping and optional salary enrichment; optional. When absent, scraper returns an empty job list and salary enrichment falls back to JobSpy-only data.
 - `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`: Required for daily email digests.
 
 ## Running

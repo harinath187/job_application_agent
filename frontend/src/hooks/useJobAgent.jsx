@@ -1,34 +1,39 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import { agentApi } from '../api/agentApi.js'
-import { POLLING_INTERVAL_MS } from '../utils/constants.js'
+import { API_BASE_URL, API_BASE_PATH, POLLING_INTERVAL_MS } from '../utils/constants.js'
 
 const JobAgentContext = createContext(null)
 const STORAGE_KEY = 'jobAgentSession'
+const THEME_STORAGE_KEY = 'jobAgentTheme'
+
+function getInitialTheme() {
+  if (typeof window === 'undefined') return 'dark'
+
+  try {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY)
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      return storedTheme
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+}
 
 function getStatusFromJobs(jobs, isProcessing) {
-  if (!isProcessing && jobs.length === 0) {
-    return 'Waiting for upload'
-  }
-
-  if (jobs.some((job) => job.status === 'failed')) {
-    return 'Processing failed'
-  }
-
-  if (jobs.length === 0) {
-    return 'Parsing resume...'
-  }
-
-  const completeCount = jobs.filter((job) => job.status === 'complete').length
-  if (completeCount === jobs.length) {
-    return 'Complete!'
-  }
-
-  if (jobs.some((job) => job.status === 'tailored')) {
-    return 'Tailoring resumes...'
-  }
-
+  if (!isProcessing && jobs.length === 0) return 'Waiting for upload'
+  if (jobs.some((job) => job.status === 'failed')) return 'Processing failed'
+  if (jobs.length === 0) return 'Parsing resume...'
+  const completeCount = jobs.filter((job) => job.resume_path && job.cover_letter_path).length
+  if (completeCount === jobs.length) return 'Complete!'
+  if (jobs.some((job) => job.resume_path || job.cover_letter_path)) return 'Preparing application files...'
   return 'Searching jobs...'
+}
+
+function isTerminalStatus(status) {
+  return status === 'Complete!' || status === 'Processing failed' || status === 'Stopped'
 }
 
 function loadStoredSession() {
@@ -56,6 +61,11 @@ function clearStoredSession() {
   }
 }
 
+function buildStreamUrl(sessionId) {
+  const base = API_BASE_URL ? `${API_BASE_URL.replace(/\/$/, '')}${API_BASE_PATH}` : API_BASE_PATH
+  return `${base}/stream/${sessionId}`
+}
+
 export function JobAgentProvider({ children }) {
   const [sessionId, setSessionId] = useState('')
   const [jobs, setJobs] = useState([])
@@ -63,35 +73,60 @@ export function JobAgentProvider({ children }) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
   const [alertInfo, setAlertInfo] = useState({ alertsEnabled: false, alertEmail: null, alertMessage: '' })
-  const [theme, setTheme] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.localStorage.getItem('theme') || 'dark'
-    }
-    return 'dark'
-  })
+  const [statusMessage, setStatusMessage] = useState('Waiting for upload')
+  const [isComplete, setIsComplete] = useState(false)
+  const [theme, setTheme] = useState(getInitialTheme)
   const intervalRef = useRef(null)
-  const isPollingRef = useRef(false)
+  const eventSourceRef = useRef(null)
+  const fetchInFlightRef = useRef(false)
+  const sessionStateRef = useRef({
+    sessionId: '',
+    jobs: [],
+    status: 'Waiting for upload',
+    isProcessing: false,
+    alertInfo: { alertsEnabled: false, alertEmail: null, alertMessage: '' },
+    statusMessage: 'Waiting for upload',
+    isComplete: false
+  })
 
-  const clearPolling = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
+  useEffect(() => {
+    sessionStateRef.current = {
+      sessionId,
+      jobs,
+      status,
+      isProcessing,
+      alertInfo,
+      statusMessage,
+      isComplete
     }
-    isPollingRef.current = false
-  }, [])
+  }, [sessionId, jobs, status, isProcessing, alertInfo, statusMessage, isComplete])
+
+  useEffect(() => {
+    const root = document.documentElement
+    root.classList.toggle('light', theme === 'light')
+    root.classList.toggle('dark', theme === 'dark')
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme)
+    } catch {
+      // ignore storage errors
+    }
+  }, [theme])
 
   const persistSession = useCallback(
     (nextState) => {
-      const currentState = loadStoredSession() || {}
+      const currentState = loadStoredSession() || sessionStateRef.current
       saveStoredSession({
-        sessionId: nextState.sessionId ?? currentState.sessionId ?? sessionId,
-        jobs: nextState.jobs ?? currentState.jobs ?? jobs,
-        status: nextState.status ?? currentState.status ?? status,
-        isProcessing: nextState.isProcessing ?? currentState.isProcessing ?? isProcessing,
-        alertInfo: nextState.alertInfo ?? currentState.alertInfo ?? alertInfo
+        sessionId: nextState.sessionId ?? currentState.sessionId,
+        jobs: nextState.jobs ?? currentState.jobs,
+        status: nextState.status ?? currentState.status,
+        isProcessing: nextState.isProcessing ?? currentState.isProcessing,
+        alertInfo: nextState.alertInfo ?? currentState.alertInfo,
+        statusMessage: nextState.statusMessage ?? currentState.statusMessage,
+        isComplete: nextState.isComplete ?? currentState.isComplete
       })
     },
-    [alertInfo, jobs, sessionId, status, isProcessing]
+    []
   )
 
   const clearSessionStorage = useCallback(() => {
@@ -99,174 +134,216 @@ export function JobAgentProvider({ children }) {
   }, [])
 
   const toggleTheme = useCallback(() => {
-    setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
+    setTheme((currentTheme) => (currentTheme === 'dark' ? 'light' : 'dark'))
   }, [])
 
-  useEffect(() => {
-    if (typeof document === 'undefined') {
-      return
+  const closeStream = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close()
+      eventSourceRef.current = null
     }
+  }, [])
 
-    document.documentElement.classList.toggle('light', theme === 'light')
-    document.documentElement.classList.toggle('dark', theme === 'dark')
-    window.localStorage.setItem('theme', theme)
-  }, [theme])
+  const clearPolling = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+  }, [])
 
-  const pollJobs = useCallback(
+  const fetchJobs = useCallback(
     async (currentSessionId) => {
+      if (!currentSessionId) return null
+      if (fetchInFlightRef.current) return null
+      fetchInFlightRef.current = true
       try {
         const data = await agentApi.getJobStatus(currentSessionId)
         const jobsData = data.jobs || []
-        const processingStatus = getStatusFromJobs(jobsData, true)
         const nextAlertInfo = {
           alertsEnabled: Boolean(data.alerts_enabled),
           alertEmail: data.alert_email || null,
           alertMessage: data.alert_message || ''
         }
+        const nextStatus = getStatusFromJobs(jobsData, Boolean(data.status === 'processing' || jobsData.length === 0))
+        const nextComplete = nextStatus === 'Complete!'
+        const nextProcessing = !isTerminalStatus(nextStatus)
 
         setJobs(jobsData)
-        setStatus(processingStatus)
-        setIsProcessing(true)
+        setStatus(nextStatus)
+        setIsProcessing(nextProcessing)
         setError('')
         setAlertInfo(nextAlertInfo)
-        persistSession({ sessionId: currentSessionId, jobs: jobsData, status: processingStatus, isProcessing: true, alertInfo: nextAlertInfo })
-
-        if (jobsData.some((job) => job.status === 'failed')) {
-          setError('One or more jobs failed during processing.')
-          setIsProcessing(false)
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
-          }
-          persistSession({ isProcessing: false })
-          return
+        setIsComplete(nextComplete)
+        persistSession({
+          sessionId: currentSessionId,
+          jobs: jobsData,
+          status: nextStatus,
+          isProcessing: nextProcessing,
+          alertInfo: nextAlertInfo,
+          statusMessage: loadStoredSession()?.statusMessage ?? nextStatus,
+          isComplete: nextComplete
+        })
+        if (!nextProcessing) {
+          clearPolling()
         }
-
-        const allComplete = jobsData.length > 0 && jobsData.every((job) => job.status === 'complete')
-        if (allComplete) {
-          setStatus('Complete!')
-          setIsProcessing(false)
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
-          }
-          persistSession({ status: 'Complete!', isProcessing: false })
-        }
+        return data
       } catch (err) {
-        console.error('pollJobs error', err)
+        console.error('fetchJobs error', err)
         setError('Unable to fetch job updates.')
-        setIsProcessing(false)
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current)
-          intervalRef.current = null
-        }
-        persistSession({ isProcessing: false })
+        return null
+      } finally {
+        fetchInFlightRef.current = false
       }
     },
-    [persistSession]
+    [clearPolling, persistSession]
   )
 
-  const startPolling = useCallback(
+  const startStream = useCallback(
     (currentSessionId) => {
-      if (!currentSessionId) {
-        return
+      closeStream()
+      const es = new EventSource(buildStreamUrl(currentSessionId))
+      eventSourceRef.current = es
+
+      es.onmessage = async (event) => {
+        try {
+          const { msg, done } = JSON.parse(event.data)
+          setStatusMessage(msg)
+          setStatus(msg)
+          setIsProcessing(!done)
+          setError('')
+          setIsComplete(Boolean(done))
+          persistSession({ sessionId: currentSessionId, status: msg, statusMessage: msg, isProcessing: !done, isComplete: Boolean(done) })
+
+          if (done) {
+            closeStream()
+            await fetchJobs(currentSessionId)
+            setStatusMessage(msg)
+            setStatus(msg)
+          }
+        } catch (parseError) {
+          console.error('stream parse error', parseError)
+        }
       }
 
-      clearPolling()
-      intervalRef.current = setInterval(async () => {
-        if (isPollingRef.current) {
-          return
-        }
-
-        isPollingRef.current = true
-        try {
-          await pollJobs(currentSessionId)
-        } finally {
-          isPollingRef.current = false
-        }
-      }, POLLING_INTERVAL_MS)
+      es.onerror = () => {
+        closeStream()
+        const message = 'Connection lost - check backend logs.'
+        setStatusMessage(message)
+        setStatus(message)
+        setError(message)
+        setIsProcessing(false)
+        clearPolling()
+        persistSession({ status: message, statusMessage: message, isProcessing: false })
+      }
     },
-    [clearPolling, pollJobs]
+    [clearPolling, closeStream, fetchJobs, persistSession]
   )
 
   const loadSession = useCallback(
     async (targetSessionId, cachedJobs = []) => {
-      if (!targetSessionId) {
-        return
-      }
-
+      if (!targetSessionId) return
       setSessionId(targetSessionId)
       if (cachedJobs.length > 0) {
         const initialStatus = getStatusFromJobs(cachedJobs, true)
+        const initialProcessing = !isTerminalStatus(initialStatus)
         setJobs(cachedJobs)
         setStatus(initialStatus)
-        setIsProcessing(true)
-        persistSession({ sessionId: targetSessionId, jobs: cachedJobs, status: initialStatus, isProcessing: true })
+        setStatusMessage(initialStatus)
+        setIsProcessing(initialProcessing)
+        persistSession({ sessionId: targetSessionId, jobs: cachedJobs, status: initialStatus, statusMessage: initialStatus, isProcessing: initialProcessing })
       }
-
-      startPolling(targetSessionId)
-      await pollJobs(targetSessionId)
+      clearPolling()
+      if (cachedJobs.length > 0 && isTerminalStatus(getStatusFromJobs(cachedJobs, true))) {
+        return
+      }
+      intervalRef.current = setInterval(() => {
+        fetchJobs(targetSessionId)
+      }, POLLING_INTERVAL_MS)
+      await fetchJobs(targetSessionId)
     },
-    [persistSession, pollJobs, startPolling]
+    [clearPolling, fetchJobs, persistSession]
   )
 
-  const startAgent = useCallback(
-    async ({ file, role, location, experience }) => {
+  const runAgent = useCallback(
+    async ({ file = null, resumeId = '', role, location, experience }) => {
       try {
         setError('')
         setIsProcessing(true)
-        setStatus('Parsing resume...')
+        const initialStatus = resumeId ? 'Loading saved resume...' : 'Parsing resume...'
+        setStatus(initialStatus)
+        setStatusMessage(initialStatus)
+        setIsComplete(false)
         setAlertInfo({ alertsEnabled: false, alertEmail: null, alertMessage: '' })
 
-        const response = await agentApi.uploadResume(file, role, location, experience)
+        const response = await agentApi.uploadResume({ file, resumeId, role, location, experience })
         const session = response.jobReferenceId || response.session_id || response.sessionId || ''
 
         setSessionId(session)
+        const searchingMessage = 'Searching LinkedIn, Indeed and Naukri...'
         setStatus('Searching jobs...')
-        persistSession({ sessionId: session, status: 'Searching jobs...', isProcessing: true, alertInfo: { alertsEnabled: false, alertEmail: null, alertMessage: '' } })
+        setStatusMessage(searchingMessage)
+        persistSession({
+          sessionId: session,
+          status: 'Searching jobs...',
+          statusMessage: searchingMessage,
+          isProcessing: true,
+          isComplete: false,
+          alertInfo: { alertsEnabled: false, alertEmail: null, alertMessage: '' }
+        })
 
-        startPolling(session)
-        await pollJobs(session)
+        startStream(session)
         return session
       } catch (err) {
         console.error('startAgent error', err)
-        setError('Failed to upload resume. Please try again.')
+        const backendMessage = err?.response?.data?.detail
+        setError(typeof backendMessage === 'string' && backendMessage.trim() ? backendMessage : 'Failed to upload resume. Please try again.')
         setIsProcessing(false)
         setStatus('Upload failed')
-        persistSession({ status: 'Upload failed', isProcessing: false })
+        setStatusMessage('Upload failed')
+        persistSession({ status: 'Upload failed', statusMessage: 'Upload failed', isProcessing: false, isComplete: false })
         throw err
       }
     },
-    [persistSession, pollJobs]
+    [persistSession, startStream]
+  )
+
+  const startAgent = useCallback(
+    async ({ file, role, location, experience }) => runAgent({ file, role, location, experience }),
+    [runAgent]
+  )
+
+  const runWithSavedResume = useCallback(
+    async ({ resumeId, role, location, experience }) => runAgent({ resumeId, role, location, experience }),
+    [runAgent]
   )
 
   const stopAgent = useCallback(() => {
+    closeStream()
     clearPolling()
-
+    fetchInFlightRef.current = false
     setIsProcessing(false)
     setStatus('Stopped')
-    persistSession({ status: 'Stopped', isProcessing: false })
-  }, [clearPolling, persistSession])
-
+    setStatusMessage('Stopped')
+    persistSession({ status: 'Stopped', statusMessage: 'Stopped', isProcessing: false, isComplete: false })
+  }, [clearPolling, closeStream, persistSession])
   useEffect(() => {
     const stored = loadStoredSession()
     if (stored?.sessionId) {
       setSessionId(stored.sessionId)
       setJobs(stored.jobs || [])
       setStatus(stored.status || getStatusFromJobs(stored.jobs || [], false))
+      setStatusMessage(stored.statusMessage || stored.status || getStatusFromJobs(stored.jobs || [], false))
       setIsProcessing(Boolean(stored.isProcessing))
+      setIsComplete(Boolean(stored.isComplete))
       setAlertInfo(stored.alertInfo || { alertsEnabled: false, alertEmail: null, alertMessage: '' })
-      if (stored.status !== 'Stopped') {
-        loadSession(stored.sessionId, stored.jobs || [])
-      }
+      loadSession(stored.sessionId, stored.jobs || [])
     }
 
     return () => {
       clearPolling()
+      closeStream()
     }
-    // We intentionally only run this effect once on mount to restore any persisted session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [clearPolling, closeStream, loadSession])
 
   const handleDownload = async (filename) => {
     try {
@@ -290,27 +367,24 @@ export function JobAgentProvider({ children }) {
       sessionId,
       jobs,
       status,
+      statusMessage,
+      isComplete,
       isProcessing,
       error,
       alertInfo,
       theme,
+      toggleTheme,
       startAgent,
+      runWithSavedResume,
       stopAgent,
       loadSession,
       clearSessionStorage,
-      handleDownload,
-      toggleTheme
+      handleDownload
     }),
-    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, toggleTheme]
+    [sessionId, jobs, status, statusMessage, isComplete, isProcessing, error, alertInfo, theme, startAgent, runWithSavedResume, stopAgent, loadSession, clearSessionStorage, toggleTheme]
   )
 
-  return (
-    <JobAgentContext.Provider value={contextValue}>
-      <div className={theme === 'dark' ? 'min-h-screen bg-gray-950 text-white' : 'min-h-screen bg-slate-50 text-slate-900'}>
-        {children}
-      </div>
-    </JobAgentContext.Provider>
-  )
+  return <JobAgentContext.Provider value={contextValue}>{children}</JobAgentContext.Provider>
 }
 
 JobAgentProvider.propTypes = {

@@ -3,31 +3,17 @@ Cover Letter Agent - Generates professional, tailored cover letters using Groq L
 Features structured JD parsing, keyword extraction, and fallback templates.
 """
 import logging
-import os
 from pathlib import Path
-from groq import Groq
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+from utils.groq_client import groq_call
 from utils.file_helpers import sanitise_filename
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Read Groq API key at runtime.
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-
-def get_groq_client() -> Groq:
-    """
-    Lazily initialize the Groq client to avoid import-time failures.
-    """
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is not set. Cover letter generation via Groq is unavailable.")
-    return Groq(api_key=GROQ_API_KEY)
-
 
 def build_advanced_prompt(
     company_name: str,
@@ -209,7 +195,6 @@ def generate_cover_letter(
         
         # Try Groq LLM with advanced prompt first
         try:
-            client = get_groq_client()
             # Build the advanced prompt with structured JD parsing
             prompt = build_advanced_prompt(
                 company_name=job.get("company", "Company"),
@@ -219,18 +204,11 @@ def generate_cover_letter(
                 extracted_skills=skills
             )
             
-            message = client.chat.completions.create(
-                model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
+            cover_letter_text = groq_call(
+                prompt=prompt,
+                model="llama-3.1-8b-instant",
                 max_tokens=2000,
-                temperature=0.3,  # Lower temperature for consistency
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
             )
-            cover_letter_text = message.choices[0].message.content.strip()  # FIXED: Read chat completion response content.
             
             # Validate output (check for minimum quality)
             if not cover_letter_text or len(cover_letter_text.split("\n")) < 2 or len(cover_letter_text) < 150:

@@ -8,11 +8,17 @@ from orchestrator.state import AgentState
 from agents.pdf_parser import parse_resume, get_resume_text, extract_email_from_text
 from agents.scraper_agent import scrape_jobs
 from agents.tailor_agent import tailor_resume, save_tailored_resume
+from agents.ats_score_agent import score_resume
+from agents.skills_gap_agent import analyze_gap
+from agents.interview_prep_agent import generate_prep
 from agents.cover_letter_agent import generate_cover_letter
 from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
 from utils.db import (
     insert_job,
+    insert_interview_prep,
+    insert_skills_gap,
     update_job_status,
+    update_job_score,
     upsert_alert_preference_for_user,
     upsert_alert_user,
     upsert_session_alert_status,
@@ -112,7 +118,18 @@ def scraper_node(state: AgentState) -> AgentState:
     # Insert each job into database with pending status for incremental display
     session_id = state.get("session_id")
     for job in jobs:
-        job_id = insert_job(session_id, job)
+        job_id = insert_job(
+            session_id=session_id,
+            resume_id=state.get("resume_id"),
+            title=job.get("title", ""),
+            company=job.get("company", ""),
+            location=job.get("location", ""),
+            description=job.get("description", ""),
+            job_url=job.get("job_url", ""),
+            salary_min=job.get("salary", {}).get("min") if job.get("salary") else None,
+            salary_max=job.get("salary", {}).get("max") if job.get("salary") else None,
+            salary_interval=job.get("salary", {}).get("interval") if job.get("salary") else None,
+        )
         job["id"] = job_id  # Add the database ID to the job
     
     state["jobs"] = jobs
@@ -164,6 +181,84 @@ def tailor_node(state: AgentState) -> AgentState:
     return state
 
 
+def ats_score_node(state: AgentState) -> AgentState:
+    """Score each tailored resume against its job description for ATS keyword match."""
+    ats_scores: dict[str, dict] = {}
+    for tailored_item in state.get("tailored_resumes", []):
+        job = tailored_item.get("job", {})
+        job_id = job.get("id")
+        if not job_id:
+            continue
+
+        tailored_data = tailored_item.get("tailored", {}) or {}
+        tailored_resume_text = "\n".join(
+            part for part in [
+                tailored_data.get("rewritten_summary", ""),
+                ", ".join(tailored_data.get("revised_skills", []) or []),
+                "\n".join(tailored_data.get("bullet_rewrites", []) or []),
+            ]
+            if part
+        )
+        score = score_resume(
+            resume_text=tailored_resume_text or state.get("resume_text", ""),
+            job_description=job.get("description", ""),
+        )
+        ats_scores[job_id] = score
+        update_job_score(job_id, score.get("match_pct", 0), score.get("missing_keywords", []))
+
+    state["ats_scores"] = ats_scores
+    return state
+
+
+def skills_gap_node(state: AgentState) -> AgentState:
+    """
+    Analyze skills gaps for each job.
+    This is independent from ATS scoring and reads the same shared state, so a future
+    contributor could parallelize both nodes after tailor without changing the inputs.
+    """
+    skills_gap_results: dict[str, dict] = {}
+    candidate_skills = state.get("extracted_skills", [])
+    for tailored_item in state.get("tailored_resumes", []):
+        job = tailored_item.get("job", {})
+        job_id = job.get("id")
+        if not job_id:
+            continue
+        result = analyze_gap(candidate_skills=candidate_skills, job_description=job.get("description", ""))
+        skills_gap_results[job_id] = result
+        insert_skills_gap(job_id, result)
+
+    state["skills_gap_results"] = skills_gap_results
+    return state
+
+
+def interview_prep_node(state: AgentState) -> AgentState:
+    """
+    Generate interview prep questions for each job.
+    This uses the same shared state as ATS and skills-gap nodes and can be parallelized later.
+    """
+    interview_prep_results: dict[str, dict] = {}
+    skills_gap_results = state.get("skills_gap_results", {})
+    tailored_map = {item.get("job", {}).get("id"): item for item in state.get("tailored_resumes", [])}
+
+    for job_id, gap in skills_gap_results.items():
+        if not job_id or job_id not in tailored_map:
+            continue
+
+        job = tailored_map[job_id].get("job", {})
+        tailored_data = tailored_map[job_id].get("tailored", {}) or {}
+        tailored_resume_summary = tailored_data.get("rewritten_summary", "") or state.get("resume_text", "")[:500]
+        prep = generate_prep(
+            job_description=job.get("description", ""),
+            tailored_resume_summary=tailored_resume_summary,
+            missing_skills=gap.get("missing_skills", []),
+        )
+        interview_prep_results[job_id] = prep
+        insert_interview_prep(job_id, prep.get("questions", []))
+
+    state["interview_prep_results"] = interview_prep_results
+    return state
+
+
 def cover_letter_node(state: AgentState) -> AgentState:
     """
     Node that generates tailored cover letters for each job.
@@ -211,11 +306,11 @@ def cover_letter_node(state: AgentState) -> AgentState:
         if job_id:
             update_job_status(
                 job_id=job_id,
-                status="complete",
+                status="interview",
                 resume_path=relative_tailored_resume_path,
                 cover_letter_path=relative_cover_letter_path
             )
-            logger.info(f"Updated job {job_id} to complete status")
+            logger.info(f"Updated job {job_id} to interview status")
         
         time.sleep(2)  # Pause after each tailor + cover letter pair to reduce Groq rate limit pressure.
     
@@ -239,6 +334,9 @@ def build_graph():
     workflow.add_node("auto_alert_registration", auto_alert_registration_node)
     workflow.add_node("scraper", scraper_node)
     workflow.add_node("tailor", tailor_node)
+    workflow.add_node("ats_score", ats_score_node)
+    workflow.add_node("skills_gap", skills_gap_node)
+    workflow.add_node("interview_prep", interview_prep_node)
     workflow.add_node("cover_letter", cover_letter_node)
     
     # Define edges (linear flow)
@@ -246,7 +344,10 @@ def build_graph():
     workflow.add_edge("pdf_parser", "auto_alert_registration")
     workflow.add_edge("auto_alert_registration", "scraper")
     workflow.add_edge("scraper", "tailor")
-    workflow.add_edge("tailor", "cover_letter")
+    workflow.add_edge("tailor", "ats_score")
+    workflow.add_edge("ats_score", "skills_gap")
+    workflow.add_edge("skills_gap", "interview_prep")
+    workflow.add_edge("interview_prep", "cover_letter")
     workflow.add_edge("cover_letter", END)
     
     # Compile and return

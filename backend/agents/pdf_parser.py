@@ -3,30 +3,16 @@ PDF Parser Agent - Extracts resume data using Groq LLM.
 """
 import json
 import logging
-import os
 import re
 from datetime import datetime
 from typing import Dict, Any
 
-from groq import Groq
 from pypdf import PdfReader
 
+from utils.groq_client import groq_call
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Read Groq API key from environment at runtime.
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-
-def get_groq_client() -> Groq:
-    """
-    Lazily create a Groq client when resume parsing is requested.
-    """
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is not set. Resume parsing via Groq is unavailable.")
-    return Groq(api_key=GROQ_API_KEY)
-
 
 COMMON_SKILLS = [
     # Languages
@@ -175,15 +161,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         
         # Try Groq first, fall back to heuristic parsing if unavailable or fails
         try:
-            client = get_groq_client()
-            
-            message = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"""Analyze this resume and extract ONLY the following information in valid JSON format:
+            response_text = groq_call(
+                prompt=f"""Analyze this resume and extract ONLY the following information in valid JSON format:
 - skills: list of 5-8 key technical or professional skills mentioned
 - experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
 - experience: a short bucket such as Entry level, 1-3 years, 3-5 years, or 5+ years.
@@ -192,13 +171,11 @@ Resume text:
 {resume_text}
 
 Return ONLY valid JSON with no additional text. Example format:
-{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"], "experience_years": 5, "experience": "3-5 years"}}"""
-                    }
-                ]
+{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"], "experience_years": 5, "experience": "3-5 years"}}""",
+                model="llama-3.1-8b-instant",
+                max_tokens=1024,
             )
-            
-            response_text = message.choices[0].message.content.strip()
-            
+
             # Check if response is empty before attempting JSON parsing
             if not response_text:
                 logger.warning("Groq returned empty response; falling back to heuristic parsing")

@@ -5,7 +5,10 @@ import { ACCEPTED_FILE_TYPE, MAX_FILE_SIZE_MB } from '../../utils/constants.js'
 export function UploadBox({ onFileSelect, isProcessing }) {
   const handleFile = (file) => {
     if (!file) return
-    if (file.type !== ACCEPTED_FILE_TYPE) {
+    const isPdfMime = file.type === ACCEPTED_FILE_TYPE
+    const isPdfExtension = file.name?.toLowerCase().endsWith('.pdf')
+
+    if (!isPdfMime && !isPdfExtension) {
       onFileSelect(null, 'Please upload a PDF file.')
       return
     }
@@ -32,7 +35,7 @@ export function UploadBox({ onFileSelect, isProcessing }) {
 
   return (
     <label className={`group relative block cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed ${isProcessing ? 'border-gray-700 bg-gray-900/80' : 'border-gray-700 bg-gray-950 hover:border-indigo-500'} p-10 text-center transition dark:border-gray-700 dark:bg-gray-950 dark:hover:border-indigo-500`}>
-      <input type="file" className="sr-only" accept="application/pdf" onChange={handleChange} disabled={isProcessing} />
+      <input type="file" className="sr-only" accept=".pdf,application/pdf" onChange={handleChange} disabled={isProcessing} />
       <div onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
         <div className="mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-gray-800 text-indigo-400 transition group-hover:bg-gray-700">
           <CloudUpload size={32} />

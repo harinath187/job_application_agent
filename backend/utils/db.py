@@ -2,12 +2,23 @@
 SQLite database initialization and operations for job application sessions.
 """
 import sqlite3
+import uuid
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 
-DB_PATH = Path(__file__).parent.parent / "data" / "jobs.db"
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "jobs.db"
+ALLOWED_JOB_STATUSES = {"new", "applied", "interview", "rejected"}
+
+
+def _add_column_if_missing(cursor: sqlite3.Cursor, table_name: str, column_name: str, alter_sql: str) -> None:
+    """Add a column only when it is absent, using SQLite-compatible SQL."""
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = {row[1] for row in cursor.fetchall()}
+    if column_name not in columns:
+        cursor.execute(alter_sql)
 
 
 def get_db_connection() -> sqlite3.Connection:
@@ -57,20 +68,70 @@ def init_db() -> None:
         # Create jobs table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL,
+                resume_id TEXT,
                 title TEXT NOT NULL,
                 company TEXT NOT NULL,
                 location TEXT,
                 job_url TEXT,
                 description TEXT,
                 resume_path TEXT,
-                cover_letter_path TEXT,
-                status TEXT NOT NULL,
+                letter_path TEXT,
+                salary_min INTEGER,
+                salary_max INTEGER,
+                salary_interval TEXT,
+                match_pct INTEGER NOT NULL DEFAULT 0,
+                missing_keywords TEXT DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'new',
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS resumes (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                extracted_role TEXT,
+                extracted_location TEXT,
+                extracted_skills TEXT,
+                uploaded_at TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS skills_gaps (
+                job_id TEXT PRIMARY KEY,
+                missing_skills TEXT,
+                transferable_skills TEXT,
+                suggestions TEXT,
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interview_prep (
+                job_id TEXT PRIMARY KEY,
+                questions TEXT,
+                FOREIGN KEY (job_id) REFERENCES jobs(id)
+            )
+        """)
+        cursor.execute("PRAGMA table_info(jobs)")
+        job_columns = {row[1] for row in cursor.fetchall()}
+        _add_column_if_missing(cursor, "jobs", "resume_id", "ALTER TABLE jobs ADD COLUMN resume_id TEXT")
+        _add_column_if_missing(cursor, "jobs", "resume_path", "ALTER TABLE jobs ADD COLUMN resume_path TEXT")
+        _add_column_if_missing(cursor, "jobs", "salary_min", "ALTER TABLE jobs ADD COLUMN salary_min INTEGER")
+        _add_column_if_missing(cursor, "jobs", "salary_max", "ALTER TABLE jobs ADD COLUMN salary_max INTEGER")
+        _add_column_if_missing(cursor, "jobs", "salary_interval", "ALTER TABLE jobs ADD COLUMN salary_interval TEXT")
+        if "letter_path" not in job_columns:
+            cursor.execute("ALTER TABLE jobs ADD COLUMN letter_path TEXT")
+            if "cover_letter_path" in job_columns:
+                cursor.execute("UPDATE jobs SET letter_path = cover_letter_path WHERE letter_path IS NULL")
+        _add_column_if_missing(cursor, "jobs", "match_pct", "ALTER TABLE jobs ADD COLUMN match_pct INTEGER NOT NULL DEFAULT 0")
+        _add_column_if_missing(cursor, "jobs", "missing_keywords", "ALTER TABLE jobs ADD COLUMN missing_keywords TEXT DEFAULT '[]'")
+        _add_column_if_missing(cursor, "jobs", "status", "ALTER TABLE jobs ADD COLUMN status TEXT NOT NULL DEFAULT 'new'")
+        _add_column_if_missing(cursor, "jobs", "created_at", "ALTER TABLE jobs ADD COLUMN created_at TEXT")
+        _add_column_if_missing(cursor, "jobs", "job_url", "ALTER TABLE jobs ADD COLUMN job_url TEXT")
+        cursor.execute("UPDATE jobs SET status = 'new' WHERE status IS NULL OR status = ''")
 
         # Create alert users table
         cursor.execute("""
@@ -210,40 +271,98 @@ def insert_search_history(session_id: str, resume_name: str, resume_path: str, r
         conn.commit()
 
 
-def insert_job(session_id: str, job: Dict[str, Any]) -> int:
+def insert_job(
+    session_id: str,
+    resume_id: str | None,
+    title: str,
+    company: str,
+    location: str,
+    description: str,
+    resume_path: str = None,
+    letter_path: str = None,
+    salary_min: int | None = None,
+    salary_max: int | None = None,
+    salary_interval: str | None = None,
+    match_pct: int = 0,
+    missing_keywords: list[str] | None = None,
+    job_url: str = None,
+) -> str:
     """
     Insert a job into the database.
 
     Args:
         session_id: Session identifier
-        job: Job dictionary with keys: title, company, location, description, job_url
+        title: Job title
+        company: Company name
+        location: Job location
+        description: Full job description
+        resume_path: Optional tailored resume path
+        letter_path: Optional cover letter path
+        match_pct: ATS match percentage
+        missing_keywords: List of missing keywords
+        job_url: Optional job URL
 
     Returns:
-        The job ID of the inserted record
+        The generated job UUID
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         created_at = datetime.utcnow().isoformat()
+        job_id = str(uuid.uuid4())
+        missing_keywords_json = json.dumps(missing_keywords or [])
         cursor.execute(
-            """INSERT INTO jobs 
-               (session_id, title, company, location, job_url, description, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO jobs
+                (id, session_id, resume_id, title, company, location, job_url, description, resume_path,
+                letter_path, salary_min, salary_max, salary_interval, match_pct, missing_keywords, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
+                job_id,
                 session_id,
-                job.get("title", ""),
-                job.get("company", ""),
-                job.get("location", ""),
-                job.get("job_url", ""),
-                job.get("description", ""),
-                "pending",
-                created_at
+                resume_id,
+                title,
+                company,
+                location,
+                job_url,
+                description,
+                resume_path,
+                letter_path,
+                salary_min,
+                salary_max,
+                salary_interval,
+                match_pct,
+                missing_keywords_json,
+                "new",
+                created_at,
             )
         )
         conn.commit()
-        return cursor.lastrowid
+        return job_id
 
 
-def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
+def _normalize_job_row(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Return job rows with compatibility aliases for the UI."""
+    if not job:
+        return job
+    job.setdefault("match_pct", 0)
+    job.setdefault("salary_min", None)
+    job.setdefault("salary_max", None)
+    job.setdefault("salary_interval", None)
+    raw_missing_keywords = job.get("missing_keywords", "[]")
+    if isinstance(raw_missing_keywords, str):
+        try:
+            job["missing_keywords"] = json.loads(raw_missing_keywords)
+        except json.JSONDecodeError:
+            job["missing_keywords"] = []
+    elif raw_missing_keywords is None:
+        job["missing_keywords"] = []
+    job.setdefault("status", "new")
+    job["cover_letter_path"] = job.get("letter_path") or job.get("cover_letter_path")
+    if not job.get("letter_path") and job.get("cover_letter_path"):
+        job["letter_path"] = job["cover_letter_path"]
+    return job
+
+
+def get_jobs(session_id: str) -> List[Dict[str, Any]]:
     """
     Retrieve all jobs for a given session.
 
@@ -283,7 +402,12 @@ def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
                    ORDER BY sh.created_at DESC"""
             )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        return [_normalize_job_row(dict(row)) for row in rows]
+
+
+def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
+    """Backward-compatible alias for get_jobs."""
+    return get_jobs(session_id)
 
 
 def delete_search_history_item(session_id: str) -> bool:
@@ -310,7 +434,7 @@ def delete_search_history_items(session_ids: List[str]) -> int:
         return deleted_count
 
 
-def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
+def get_job(job_id: str) -> Dict[str, Any] | None:
     """
     Retrieve a specific job by its ID.
 
@@ -324,28 +448,224 @@ def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        return _normalize_job_row(dict(row)) if row else None
 
 
-def update_job_status(job_id: int, status: str, resume_path: str = None, cover_letter_path: str = None) -> None:
+def get_job_by_id(job_id: str) -> Dict[str, Any] | None:
+    """Backward-compatible alias for get_job."""
+    return get_job(job_id)
+
+
+def update_job_status(job_id: str, status: str, resume_path: str = None, cover_letter_path: str = None) -> None:
     """
     Update job status and file paths.
 
     Args:
         job_id: Job ID to update
-        status: New status (e.g., "tailored", "complete", "failed")
+        status: New status
         resume_path: Optional path to tailored resume
         cover_letter_path: Optional path to generated cover letter
     """
+    if status not in ALLOWED_JOB_STATUSES:
+        raise ValueError(f"Invalid job status: {status}")
+
+    update_job_paths(job_id, resume_path=resume_path, letter_path=cover_letter_path)
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            """UPDATE jobs 
-               SET status = ?, resume_path = ?, cover_letter_path = ?
-               WHERE id = ?""",
-            (status, resume_path, cover_letter_path, job_id)
+            "UPDATE jobs SET status = ? WHERE id = ?",
+            (status, job_id)
         )
         conn.commit()
+
+
+def update_job_paths(job_id: str, resume_path: str = None, letter_path: str = None) -> None:
+    """Update job output file paths once agents complete."""
+    if resume_path is None and letter_path is None:
+        return
+
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if resume_path is not None and letter_path is not None:
+            cursor.execute(
+                "UPDATE jobs SET resume_path = ?, letter_path = ? WHERE id = ?",
+                (resume_path, letter_path, job_id)
+            )
+        elif resume_path is not None:
+            cursor.execute(
+                "UPDATE jobs SET resume_path = ? WHERE id = ?",
+                (resume_path, job_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE jobs SET letter_path = ? WHERE id = ?",
+                (letter_path, job_id)
+            )
+        conn.commit()
+
+
+def save_resume(label: str, file_path: str, extracted_role: str, extracted_location: str, extracted_skills: list[str]) -> str:
+    """Save a reusable resume profile and return its ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        resume_id = str(uuid.uuid4())
+        uploaded_at = datetime.utcnow().isoformat()
+        cursor.execute(
+            """INSERT INTO resumes
+               (id, label, file_path, extracted_role, extracted_location, extracted_skills, uploaded_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                resume_id,
+                label,
+                file_path,
+                extracted_role,
+                extracted_location,
+                json.dumps(extracted_skills or []),
+                uploaded_at,
+            )
+        )
+        conn.commit()
+        return resume_id
+
+
+def list_resumes() -> List[Dict[str, Any]]:
+    """Return saved resumes ordered by most recent first."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM resumes ORDER BY uploaded_at DESC")
+        rows = cursor.fetchall()
+        results = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["extracted_skills"] = json.loads(item.get("extracted_skills", "[]"))
+            except json.JSONDecodeError:
+                item["extracted_skills"] = []
+            results.append(item)
+        return results
+
+
+def get_resume(resume_id: str) -> Dict[str, Any] | None:
+    """Return one saved resume by ID."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM resumes WHERE id = ?", (resume_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        try:
+            item["extracted_skills"] = json.loads(item.get("extracted_skills", "[]"))
+        except json.JSONDecodeError:
+            item["extracted_skills"] = []
+        return item
+
+
+def update_resume_label(resume_id: str, label: str) -> bool:
+    """Update a saved resume label."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE resumes SET label = ? WHERE id = ?", (label, resume_id))
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def delete_resume(resume_id: str) -> None:
+    """Delete a saved resume record and its file if present."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_path FROM resumes WHERE id = ?", (resume_id,))
+        row = cursor.fetchone()
+        file_path = row["file_path"] if row else None
+        cursor.execute("DELETE FROM resumes WHERE id = ?", (resume_id,))
+        conn.commit()
+
+    if file_path:
+        try:
+            Path(file_path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def update_job_score(job_id: str, match_pct: int, missing_keywords: list[str]) -> None:
+    """Update ATS scoring fields for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE jobs SET match_pct = ?, missing_keywords = ? WHERE id = ?",
+            (match_pct, json.dumps(missing_keywords or []), job_id)
+        )
+        conn.commit()
+
+
+def insert_skills_gap(job_id: str, data: Dict[str, Any]) -> None:
+    """Insert or update skills gap analysis for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO skills_gaps (job_id, missing_skills, transferable_skills, suggestions)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                   missing_skills = excluded.missing_skills,
+                   transferable_skills = excluded.transferable_skills,
+                   suggestions = excluded.suggestions""",
+            (
+                job_id,
+                json.dumps(data.get("missing_skills", [])),
+                json.dumps(data.get("transferable_skills", [])),
+                json.dumps(data.get("suggestions", [])),
+            )
+        )
+        conn.commit()
+
+
+def get_skills_gap(job_id: str) -> Dict[str, Any] | None:
+    """Return the stored skills gap analysis for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM skills_gaps WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        for key in ("missing_skills", "transferable_skills", "suggestions"):
+            raw_value = data.get(key, "[]")
+            try:
+                data[key] = json.loads(raw_value) if isinstance(raw_value, str) else raw_value or []
+            except json.JSONDecodeError:
+                data[key] = []
+        return data
+
+
+def insert_interview_prep(job_id: str, questions: list[dict]) -> None:
+    """Insert or update interview prep questions for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO interview_prep (job_id, questions)
+               VALUES (?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                   questions = excluded.questions""",
+            (job_id, json.dumps(questions or []))
+        )
+        conn.commit()
+
+
+def get_interview_prep(job_id: str) -> Dict[str, Any] | None:
+    """Return stored interview prep data for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM interview_prep WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        raw_questions = data.get("questions", "[]")
+        try:
+            data["questions"] = json.loads(raw_questions) if isinstance(raw_questions, str) else raw_questions or []
+        except json.JSONDecodeError:
+            data["questions"] = []
+        return data
 
 
 def update_session_status(session_id: str, status: str) -> None:

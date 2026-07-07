@@ -3,35 +3,21 @@ Tailor Agent - Tailors resume content to match job requirements using Groq LLM.
 """
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Dict, List, Any
 
-from groq import Groq
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.utils import simpleSplit
 from reportlab.pdfgen import canvas
 
+from utils.groq_client import groq_call
 from utils.file_helpers import sanitise_filename
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Read Groq API key at runtime.
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-
-def get_groq_client() -> Groq:
-    """
-    Lazily initialize the Groq client to avoid import-time failures.
-    """
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY is not set. Tailoring via Groq is unavailable.")
-    return Groq(api_key=GROQ_API_KEY)
-
 
 def tailor_resume(resume_text: str, job: Dict[str, Any], skills: List[str]) -> Dict[str, Any]:
     """
@@ -50,17 +36,6 @@ def tailor_resume(resume_text: str, job: Dict[str, Any], skills: List[str]) -> D
         # Truncate job description to 800 characters for prompt efficiency
         job_description_snippet = job.get('description', '')[:800]
         
-        # Call Groq API to tailor resume
-        try:
-            client = get_groq_client()
-        except RuntimeError as e:
-            logger.error(str(e))
-            return {
-                "rewritten_summary": "",
-                "revised_skills": skills,
-                "bullet_rewrites": []
-            }
-
         prompt = f"""You are a professional resume writer. Tailor the following resume to match the job posting.
 
 IMPORTANT: Do NOT fabricate experience or skills. Only rewrite existing content to emphasize relevant qualifications.
@@ -87,18 +62,7 @@ If there are fewer than 3 experience bullets in the resume, return however many 
 Return ONLY valid JSON with no additional text. Example format:
 {{"rewritten_summary": "...", "revised_skills": [...], "bullet_rewrites": [...]}}"""
         
-        message = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            max_tokens=1500,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-        )
-        
-        response_text = message.choices[0].message.content.strip()  # FIXED: Read chat completion response content.
+        response_text = groq_call(prompt=prompt, model="llama-3.1-8b-instant", max_tokens=1500)
         
         # Parse JSON response
         tailored_data = json.loads(response_text)

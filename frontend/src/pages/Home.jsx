@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X } from 'lucide-react'
-import { UploadBox } from '../components/dashboard/UploadBox.jsx'
+import { ResumeSelector } from '../components/dashboard/ResumeSelector.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
 
@@ -9,34 +8,25 @@ const EXPERIENCE_OPTIONS = ['Entry level', '1-3 years', '3-5 years', '5+ years']
 
 export function Home() {
   const navigate = useNavigate()
-  const { startAgent } = useJobAgent()
+  const { startAgent, runWithSavedResume, error: agentError } = useJobAgent()
   const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedResumeId, setSelectedResumeId] = useState('')
   const [role, setRole] = useState('')
   const [location, setLocation] = useState('')
   const [experience, setExperience] = useState('')
   const [error, setError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [uploadKey, setUploadKey] = useState(0)
+  const activeError = error || agentError
+  const isSwapWarning = typeof activeError === 'string' && activeError.toLowerCase().includes('swapped')
 
-  const handleFileSelect = (file, validationError) => {
-    setError(validationError || '')
-    if (!file || validationError) {
-      setSelectedFile(null)
-      return
-    }
-
-    setSelectedFile(file)
-  }
-
-  const handleRemoveFile = () => {
-    setSelectedFile(null)
-    setError('')
-    setUploadKey((current) => current + 1)
+  const handleSelectionChange = ({ file, resumeId }) => {
+    setSelectedFile(file || null)
+    setSelectedResumeId(resumeId || '')
   }
 
   const handleRun = async () => {
-    if (!selectedFile || !role.trim() || !location.trim()) {
-      setError('Please upload a resume and enter both role and location.')
+    if ((!selectedFile && !selectedResumeId) || !role.trim() || !location.trim()) {
+      setError('Please select a resume and enter both role and location.')
       return
     }
 
@@ -44,16 +34,24 @@ export function Home() {
     setIsProcessing(true)
 
     try {
-      const sessionId = await startAgent({
-        file: selectedFile,
-        role: role.trim(),
-        location: location.trim(),
-        experience: experience.trim()
-      })
+      const sessionId = selectedResumeId
+        ? await runWithSavedResume({
+            resumeId: selectedResumeId,
+            role: role.trim(),
+            location: location.trim(),
+            experience: experience.trim()
+          })
+        : await startAgent({
+            file: selectedFile,
+            role: role.trim(),
+            location: location.trim(),
+            experience: experience.trim()
+          })
       const query = new URLSearchParams({ jobReferenceId: sessionId }).toString()
       navigate(`/dashboard?${query}`)
     } catch (uploadError) {
-      setError('Upload failed. Please ensure the backend is running and try again.')
+      const backendMessage = uploadError?.response?.data?.detail
+      setError(typeof backendMessage === 'string' && backendMessage.trim() ? backendMessage : 'Upload failed. Please ensure the backend is running and try again.')
     } finally {
       setIsProcessing(false)
     }
@@ -72,26 +70,7 @@ export function Home() {
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Ready to start?</h2>
             <p className="mt-2 text-sm text-slate-700 dark:text-gray-400">Upload a PDF resume and begin the intelligent job search pipeline.</p>
             <div className="mt-6 space-y-6">
-              <UploadBox key={uploadKey} onFileSelect={handleFileSelect} isProcessing={isProcessing} />
-
-              {selectedFile && (
-                <div className="flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-slate-600 dark:text-gray-300 dark:bg-gray-950/60 dark:border-gray-800">
-                  <div className="min-w-0 flex-1 text-left">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-500 dark:text-gray-500">Selected resume</p>
-                    <p className="truncate font-medium text-slate-900 dark:text-white">{selectedFile.name}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRemoveFile}
-                    disabled={isProcessing}
-                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10 text-red-600 transition hover:border-red-400 hover:bg-red-500/20 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-200"
-                    aria-label="Remove selected resume"
-                    title="Remove selected resume"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              )}
+              <ResumeSelector isProcessing={isProcessing} onSelectionChange={handleSelectionChange} />
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-left text-sm font-medium text-slate-700 dark:text-gray-300">
@@ -121,6 +100,14 @@ export function Home() {
                 </label>
               </div>
 
+              {activeError && (
+                <p
+                  className={`-mt-2 text-sm ${isSwapWarning ? 'font-semibold text-red-300' : 'text-red-400'}`}
+                >
+                  {activeError}
+                </p>
+              )}
+
               <label className="block text-left text-sm font-medium text-slate-700 dark:text-gray-300">
                 Experience (optional)
                 <select
@@ -146,7 +133,7 @@ export function Home() {
               <div className="flex justify-center">
                 <Button
                   onClick={handleRun}
-                  disabled={!selectedFile || !role.trim() || !location.trim() || isProcessing}
+                  disabled={(!selectedFile && !selectedResumeId) || !role.trim() || !location.trim() || isProcessing}
                 >
                   {isProcessing ? 'Running...' : 'Run'}
                 </Button>
@@ -154,7 +141,6 @@ export function Home() {
             </div>
           </div>
         </div>
-        {error && <p className="mt-6 text-sm text-red-400">{error}</p>}
       </section>
     </main>
   )
