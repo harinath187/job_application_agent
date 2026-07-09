@@ -3,8 +3,6 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar.jsx'
 import { StatusBar } from '../components/dashboard/StatusBar.jsx'
 import { JobCard } from '../components/dashboard/JobCard.jsx'
-import { ResumePreview } from '../components/dashboard/ResumePreview.jsx'
-import { CoverLetterPreview } from '../components/dashboard/CoverLetterPreview.jsx'
 import { AlertOptIn } from '../components/dashboard/AlertOptIn.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
@@ -64,7 +62,7 @@ export function Dashboard() {
             alertMessage={alertInfo.alertMessage}
           />
 
-          <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+          <div className="grid gap-6">
             <section className="space-y-6">
               {jobs.map((job) => (
                 <JobCard
@@ -76,10 +74,6 @@ export function Dashboard() {
                 />
               ))}
             </section>
-            <aside className="space-y-6">
-              <ResumePreview resumeUrl={jobsComplete > 0 ? jobs.find((job) => job.resume_path)?.resume_path : ''} />
-              <CoverLetterPreview coverLetterUrl={jobsComplete > 0 ? jobs.find((job) => job.cover_letter_path)?.cover_letter_path : ''} />
-            </aside>
           </div>
         </div>
       </main>

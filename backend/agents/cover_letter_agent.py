@@ -11,6 +11,7 @@ from docx.shared import Pt
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from typing import Dict, Any, Optional
 from utils.file_helpers import sanitise_filename
+from utils.groq_client import GroqCallFailedError, call_groq_with_retry
 
 
 logging.basicConfig(level=logging.INFO)
@@ -219,7 +220,8 @@ def generate_cover_letter(
                 extracted_skills=skills
             )
             
-            message = client.chat.completions.create(
+            message = call_groq_with_retry(
+                client,
                 model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
                 max_tokens=2000,
                 temperature=0.3,  # Lower temperature for consistency
@@ -236,6 +238,9 @@ def generate_cover_letter(
             if not cover_letter_text or len(cover_letter_text.split("\n")) < 2 or len(cover_letter_text) < 150:
                 logger.warning("LLM output too short; using fallback template")
                 cover_letter_text = build_cover_letter_text(job, resume_summary, skills)
+        except GroqCallFailedError as llm_error:
+            logger.error("Groq cover letter generation failed after retries: %s", llm_error)
+            raise
         except RuntimeError:
             logger.warning("GROQ_API_KEY not configured; using fallback cover letter template")
             cover_letter_text = build_cover_letter_text(job, resume_summary, skills)
@@ -278,6 +283,8 @@ def generate_cover_letter(
         logger.info(f"Generated cover letter: {output_path}")
         return str(output_path)
     
+    except GroqCallFailedError:
+        raise
     except Exception as e:
         logger.error(f"Error generating cover letter: {e}")
         return ""

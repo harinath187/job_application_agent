@@ -129,11 +129,15 @@ export function Home() {
                   className="mt-2 w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
                   disabled={isProcessing}
                 >
-                  <option value="" className="text-slate-900">
+                  <option value="" className="bg-white text-slate-900 dark:bg-gray-950 dark:text-white">
                     Auto / not specified
                   </option>
                   {EXPERIENCE_OPTIONS.map((option) => (
-                    <option key={option} value={option} className="text-slate-900">
+                    <option
+                      key={option}
+                      value={option}
+                      className="bg-white text-slate-900 dark:bg-gray-950 dark:text-white"
+                    >
                       {option}
                     </option>
                   ))}

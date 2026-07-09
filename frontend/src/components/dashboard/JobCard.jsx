@@ -7,7 +7,14 @@ const statusVariant = {
   pending: 'processing',
   tailored: 'tailored',
   complete: 'complete',
-  failed: 'failed'
+  failed: 'failed',
+  failed_empty_data: 'failed',
+  failed_rate_limit: 'failed'
+}
+
+const statusMessage = {
+  failed_empty_data: 'Resume data incomplete — please retry',
+  failed_rate_limit: 'Rate limit hit — please retry later'
 }
 
 export function JobCard({ job, onDownloadResume, onDownloadCoverLetter, onViewDetail }) {
@@ -23,6 +30,9 @@ export function JobCard({ job, onDownloadResume, onDownloadCoverLetter, onViewDe
         <Badge label={job.status || 'pending'} variant={statusVariant[job.status] || 'new'} />
       </div>
       <p className="mb-4 text-sm leading-6 text-slate-600 dark:text-gray-400">{truncateText(job.description, 120)}</p>
+      {statusMessage[job.status] && (
+        <p className="mb-4 text-sm font-medium text-amber-500 dark:text-amber-400">{statusMessage[job.status]}</p>
+      )}
       <a href={job.job_url} target="_blank" rel="noreferrer" className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-indigo-300 hover:text-white">
         View listing <ArrowUpRight size={16} />
       </a>

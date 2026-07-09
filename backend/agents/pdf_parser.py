@@ -5,11 +5,14 @@ import json
 import logging
 import os
 import re
+from collections import Counter
 from datetime import datetime
 from typing import Dict, Any
 
 from groq import Groq
 from pypdf import PdfReader
+
+from utils.groq_client import GroqCallFailedError, call_groq_with_retry
 
 
 logging.basicConfig(level=logging.INFO)
@@ -50,6 +53,39 @@ COMMON_SKILLS = [
 
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
+COMMON_COMPANY_WORDS = {
+    "cisco", "confidential", "microsoft", "google", "amazon", "apple", "meta", "facebook",
+    "netflix", "oracle", "ibm", "accenture", "salesforce", "adobe", "linkedin", "github",
+    "slack", "zoom", "uber", "airbnb", "paypal", "tesla", "nvidia", "resume", "candidate"
+}
+
+SECTION_ALIASES = {
+    "experience": (
+        "experience", "work experience", "professional experience", "employment history", "career history"
+    ),
+    "education": (
+        "education", "academic background", "education and training", "qualifications"
+    ),
+}
+
+GENERIC_SECTION_HEADINGS = {
+    "summary",
+    "skills",
+    "experience",
+    "education",
+    "projects",
+    "certifications",
+    "awards",
+    "publications",
+    "languages",
+    "volunteer",
+    "volunteer experience",
+    "hobbies",
+    "interests",
+}
+
+EDUCATION_HEADER_HINTS = ("education", "academic", "qualification", "qualifications")
+
 
 def extract_email_from_text(text: str) -> str | None:
     """Extract the first valid-looking email address from resume text."""
@@ -78,11 +114,406 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     return "\n".join(text)
 
 
+def _clean_resume_text(resume_text: str) -> str:
+    """Remove obvious repeated watermark/header noise before parsing."""
+    if not resume_text:
+        return ""
+
+    lines = [line.strip() for line in resume_text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+
+    counts = Counter(lines)
+    cleaned_lines = []
+    for line in lines:
+        line_lower = line.lower()
+        is_repeated_boilerplate = counts[line] >= 3 and (
+            line_lower in COMMON_COMPANY_WORDS or "confidential" in line_lower
+        )
+        if not is_repeated_boilerplate:
+            cleaned_lines.append(line)
+
+    return "\n".join(cleaned_lines).strip()
+
+
+def _normalize_header_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+
+
+def _looks_like_section_header(line: str) -> bool:
+    if not line:
+        return False
+    stripped = line.strip()
+    normalized = _normalize_header_text(stripped.rstrip(":"))
+    if not normalized:
+        return False
+    words = normalized.split()
+    if normalized in GENERIC_SECTION_HEADINGS:
+        return True
+    if stripped.endswith(":") and len(words) <= 5:
+        return True
+    if len(words) <= 4 and stripped == stripped.upper() and any(ch.isalpha() for ch in stripped):
+        return True
+    if len(words) <= 4 and stripped[0].isupper() and not any(ch.isdigit() for ch in stripped):
+        return True
+    return False
+
+
+def _is_probable_section_header(line: str, next_line: str = "", line_index: int = 0, allow_title_case: bool = True) -> bool:
+    """Detect section headers without confusing the top-of-resume name block for a section."""
+    if not line:
+        return False
+    stripped = line.strip()
+    normalized = _normalize_header_text(stripped.rstrip(":"))
+    words = normalized.split()
+    if normalized in GENERIC_SECTION_HEADINGS:
+        return True
+    if normalized in {alias for aliases in SECTION_ALIASES.values() for alias in aliases}:
+        return True
+    if stripped.endswith(":") and len(words) <= 6 and not re.search(r"\d", stripped):
+        return True
+    if len(words) <= 4 and stripped == stripped.upper() and any(ch.isalpha() for ch in stripped):
+        return True
+    if allow_title_case and line_index > 2 and len(words) <= 4 and stripped == stripped.title() and not re.search(r"\d", stripped) and (
+        _looks_like_section_content(next_line) or _looks_like_date(next_line)
+    ):
+        return True
+    return False
+
+
+def _looks_like_section_content(line: str) -> bool:
+    stripped = (line or "").strip()
+    return bool(stripped.startswith(("-", "•", "*")) or _looks_like_date(stripped))
+
+
+def _is_probable_name_candidate(candidate: str, email: str | None = None) -> bool:
+    """Score whether a candidate line looks like a real person's name."""
+    if not candidate:
+        return False
+
+    cleaned = re.sub(r"\s+", " ", candidate).strip()
+    if len(cleaned) < 2:
+        return False
+
+    normalized = cleaned.lower()
+    if normalized in COMMON_COMPANY_WORDS:
+        return False
+    if "confidential" in normalized or "resume" in normalized or "curriculum" in normalized:
+        return False
+    if re.fullmatch(r"[A-Za-z]{1,2}", cleaned):
+        return False
+    if any(char.isdigit() for char in cleaned):
+        return False
+
+    if email:
+        local_part = email.split("@", 1)[0].lower()
+        local_letters = re.sub(r"[^a-z0-9]+", "", local_part)
+        candidate_letters = re.sub(r"[^a-z0-9]+", "", normalized)
+        if local_letters and candidate_letters:
+            if candidate_letters in local_letters or local_letters in candidate_letters:
+                return True
+            shared_chars = len(set(candidate_letters) & set(local_letters))
+            if shared_chars >= 3:
+                return True
+
+    return len(cleaned.split()) <= 4 and not cleaned.startswith(("http://", "https://"))
+
+
+def _extract_name_from_resume_text(resume_text: str, email: str | None = None) -> str:
+    """Extract a likely candidate name from resume text, ignoring repetitive watermarks."""
+    text = _clean_resume_text(resume_text) or resume_text or ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+
+    candidates = []
+    first_section_index = len(lines)
+    for idx, line in enumerate(lines):
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+        if _is_probable_section_header(line, next_line=next_line, line_index=idx, allow_title_case=True):
+            first_section_index = idx
+            break
+
+    for line in lines[:first_section_index]:
+        if EMAIL_PATTERN.search(line):
+            continue
+        if line.lower().startswith(("http://", "https://")):
+            continue
+        if line.startswith(("-", "•", "*")):
+            continue
+        if _looks_like_date(line):
+            continue
+        if _looks_like_section_header(line):
+            continue
+        if not _is_probable_name_candidate(line, email=email):
+            continue
+        score = 0
+        if len(line.split()) >= 2:
+            score += 2
+        if any(token[0].isupper() for token in line.split()):
+            score += 1
+        if email:
+            local_part = email.split("@", 1)[0].lower()
+            candidate_letters = re.sub(r"[^a-z0-9]+", "", line.lower())
+            if local_part and candidate_letters and (candidate_letters in local_part or local_part in candidate_letters):
+                score += 3
+        candidates.append((score, line))
+
+    if candidates:
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1]
+
+    for line in lines:
+        if line.lower() in COMMON_COMPANY_WORDS:
+            continue
+        if len(re.sub(r"\s+", " ", line).split()) <= 4:
+            return line
+
+    return ""
+
+
+def _extract_resume_sections_from_text(resume_text: str, email: str | None = None) -> Dict[str, Any]:
+    """Create a lightweight structured section parser that tolerates noisy resume text."""
+    cleaned_text = _clean_resume_text(resume_text) or resume_text or ""
+    lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
+    name = _extract_name_from_resume_text(cleaned_text, email=email)
+
+    contact_info = {
+        "name": name,
+        "email": email or extract_email_from_text(cleaned_text),
+        "phone": "",
+        "links": [],
+    }
+
+    sections = {
+        "contact_info": contact_info,
+        "summary": "",
+        "skills": [],
+        "experience": [],
+        "education": [],
+        "additional_sections": [],
+    }
+
+    section_name = None
+    section_heading = ""
+    section_lines: list[str] = []
+
+    def flush_section() -> None:
+        nonlocal section_name, section_heading, section_lines
+        if not section_name or not section_lines:
+            return
+        if section_name == "education":
+            parsed_entry = _parse_education_entry(section_lines)
+            if parsed_entry.get("degree") or parsed_entry.get("institution") or parsed_entry.get("dates"):
+                sections["education"].append(parsed_entry)
+        elif section_name == "experience":
+            sections["experience"].append(_parse_experience_entry(section_lines))
+        elif section_name == "skills":
+            sections["skills"] = _parse_generic_section_entries(section_lines)
+        elif section_name == "summary":
+            sections["summary"] = " ".join(_parse_generic_section_entries(section_lines)).strip()
+        else:
+            sections["additional_sections"].append({
+                "heading": section_heading,
+                "items": _parse_generic_section_entries(section_lines),
+            })
+        section_name = None
+        section_heading = ""
+        section_lines = []
+
+    for idx, line in enumerate(lines):
+        next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
+        normalized = _normalize_header_text(line.rstrip(":"))
+        if _is_probable_section_header(line, next_line=next_line, line_index=idx):
+            flush_section()
+            if normalized in {alias for aliases in SECTION_ALIASES.values() for alias in aliases}:
+                section_name = next(section for section, aliases in SECTION_ALIASES.items() if normalized in aliases)
+            elif any(hint in normalized for hint in EDUCATION_HEADER_HINTS):
+                section_name = "education"
+            elif "skill" in normalized:
+                section_name = "skills"
+            elif "summary" in normalized or "profile" in normalized:
+                section_name = "summary"
+            elif "experience" in normalized and "volunteer" not in normalized and "community" not in normalized:
+                section_name = "experience"
+            else:
+                section_name = "additional"
+                section_heading = line.strip().rstrip(":")
+            continue
+
+        if section_name is None:
+            continue
+        section_lines.append(line)
+
+    flush_section()
+
+    if not sections["experience"]:
+        experience_start = None
+        for idx, line in enumerate(lines):
+            normalized = _normalize_header_text(line.rstrip(":"))
+            if normalized == "experience":
+                experience_start = idx + 1
+                break
+        if experience_start is not None:
+            experience_lines = []
+            for line in lines[experience_start:]:
+                normalized = _normalize_header_text(line.rstrip(":"))
+                if normalized in {alias for aliases in SECTION_ALIASES.values() for alias in aliases} or any(hint in normalized for hint in EDUCATION_HEADER_HINTS):
+                    break
+                experience_lines.append(line)
+            parsed_experience = _parse_experience_entry(experience_lines)
+            if parsed_experience.get("bullets") or parsed_experience.get("company") or parsed_experience.get("title"):
+                sections["experience"].append(parsed_experience)
+
+    if sections["education"] and not sections["education"][0].get("grade"):
+        education_start = None
+        for idx, line in enumerate(lines):
+            normalized = _normalize_header_text(line.rstrip(":"))
+            if any(hint in normalized for hint in EDUCATION_HEADER_HINTS):
+                education_start = idx + 1
+                break
+        if education_start is not None:
+            for line in lines[education_start:]:
+                normalized = _normalize_header_text(line.rstrip(":"))
+                if normalized in {alias for aliases in SECTION_ALIASES.values() for alias in aliases} or normalized.endswith("experience"):
+                    break
+                grade_match = re.search(r"\b(?:cgpa|gpa|grade|percentage)\s*[:\-]?\s*([0-9.]+(?:/\s*[0-9.]+)?%?)", line, re.IGNORECASE)
+                if grade_match:
+                    sections["education"][0]["grade"] = grade_match.group(1).strip()
+                    break
+
+    if sections["education"] and sections["additional_sections"]:
+        kept_additional = []
+        for section in sections["additional_sections"]:
+            heading = str(section.get("heading") or "").strip()
+            heading_grade_match = re.search(r"\b(?:cgpa|gpa|grade|percentage)\s*[:\-]?\s*([0-9.]+(?:/\s*[0-9.]+)?%?)", heading, re.IGNORECASE)
+            if heading_grade_match:
+                if not sections["education"][0].get("grade"):
+                    sections["education"][0]["grade"] = heading_grade_match.group(1).strip()
+                sections["education"][0].setdefault("details", []).extend(section.get("items") or [])
+            else:
+                kept_additional.append(section)
+        sections["additional_sections"] = kept_additional
+
+    return sections
+
+
+def _parse_generic_section_entries(section_lines: list[str]) -> list[str]:
+    items: list[str] = []
+    current_item: list[str] = []
+    for line in section_lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("-", "•", "*")):
+            if current_item:
+                items.append(" ".join(current_item).strip())
+            current_item = [stripped.lstrip("-•*").strip()]
+            continue
+        if current_item and (_looks_like_section_header(stripped) or _looks_like_date(stripped)):
+            items.append(" ".join(current_item).strip())
+            current_item = [stripped]
+        elif current_item:
+            current_item.append(stripped)
+        else:
+            items.append(stripped)
+    if current_item:
+        items.append(" ".join(current_item).strip())
+    return [item for item in items if item]
+
+
+def _parse_education_entry(block_lines: list[str]) -> Dict[str, Any]:
+    entry_text = " | ".join(block_lines)
+    degree = ""
+    institution = ""
+    location = ""
+    dates = ""
+    grade = ""
+
+    date_match = re.search(r"((?:19|20)\d{2}(?:\s*[-–—to]+\s*(?:19|20)\d{2}|(?:\s*[-–—to]+\s*(?:present|current)))?)", entry_text, re.IGNORECASE)
+    if date_match:
+        dates = date_match.group(1).strip()
+
+    grade_match = re.search(r"\b(?:gpa|cgpa|grade|percentage)\s*[:\-]?\s*([0-9.]+(?:/\s*[0-9.]+)?%?)", entry_text, re.IGNORECASE)
+    if grade_match:
+        grade = grade_match.group(1).strip()
+
+    cleaned_lines = [line.strip().lstrip("•-*").strip() for line in block_lines if line.strip()]
+    for line in cleaned_lines:
+        if not degree and re.search(r"\b(b\.?tech|m\.?tech|bachelor|master|mba|ph\.?d|b\.?sc|m\.?sc|associate|diploma)\b", line, re.IGNORECASE):
+            degree = line
+            continue
+        if not institution and not _looks_like_date(line) and line != degree:
+            institution = line
+            continue
+        if not location and not _looks_like_date(line) and line not in {degree, institution, grade}:
+            location = line
+
+    if not degree and cleaned_lines:
+        degree = cleaned_lines[0]
+    if not institution and len(cleaned_lines) > 1:
+        institution = cleaned_lines[1]
+
+    details = [line for line in cleaned_lines if line not in {degree, institution, location, dates, grade}]
+    for line in cleaned_lines:
+        if line not in details and line not in {degree, institution, location, dates, grade}:
+            details.append(line)
+    return {
+        "degree": degree,
+        "institution": institution,
+        "location": location,
+        "dates": dates,
+        "grade": grade,
+        "details": details,
+    }
+
+
+def _parse_experience_entry(block_lines: list[str]) -> Dict[str, Any]:
+    cleaned_lines = [line.strip().lstrip("•-*").strip() for line in block_lines if line.strip()]
+    title = ""
+    company = ""
+    dates = ""
+    bullets: list[str] = []
+
+    for line in cleaned_lines:
+        if not title and "," in line:
+            title, company = [part.strip() for part in line.split(",", 1)]
+            continue
+        if not title and not _looks_like_date(line) and not line.startswith("-"):
+            title = line
+            continue
+        if not company and re.search(r"\b(?:inc|llc|ltd|corp|company|systems|technologies|solutions|labs)\b", line, re.IGNORECASE):
+            company = line
+            continue
+        if not dates and _looks_like_date(line):
+            dates = line
+            continue
+        bullets.append(line)
+
+    if not company and len(cleaned_lines) > 1 and "," in cleaned_lines[0]:
+        title, company = [part.strip() for part in cleaned_lines[0].split(",", 1)]
+
+    return {
+        "company": company,
+        "title": title,
+        "dates": dates,
+        "bullets": bullets,
+    }
+
+
+def _looks_like_date(text: str) -> bool:
+    """Return true for common date-like text in resume sections."""
+    if not text:
+        return False
+    return bool(re.search(r"(19|20)\d{2}|present|current|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec", text, re.IGNORECASE))
+
+
 def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
     """
     Fallback resume parsing using keyword matching when Groq is unavailable.
     """
-    normalized = resume_text.lower()
+    cleaned_resume_text = _clean_resume_text(resume_text) or resume_text or ""
+    normalized = cleaned_resume_text.lower()
     skills = []
     for skill in COMMON_SKILLS:
         if skill.lower() in normalized and skill not in skills:
@@ -100,11 +531,17 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
             except ValueError:
                 continue
 
+    email = extract_email_from_text(cleaned_resume_text)
+    resume_sections = _extract_resume_sections_from_text(cleaned_resume_text, email=email)
+    resume_sections["skills"] = skills
+
     return {
         "skills": skills,
         "experience_years": experience_years,
         "experience": _format_experience_summary(experience_years) if experience_years else None,
-        "email": extract_email_from_text(resume_text)
+        "email": email,
+        "resume_text": cleaned_resume_text,
+        "resume_sections": resume_sections,
     }
 
 
@@ -155,6 +592,28 @@ def _infer_experience_from_resume_text(resume_text: str) -> tuple[int, str | Non
     return experience_years, _format_experience_summary(experience_years)
 
 
+def _build_resume_extraction_prompt(resume_text_for_parsing: str) -> str:
+    """Build the Groq prompt used for resume extraction."""
+    return f"""Analyze this resume and extract ONLY the following information in valid JSON format:
+- skills: list of 5-8 key technical or professional skills mentioned.
+- experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
+- experience: a short bucket such as Entry level, 1-3 years, 3-5 years, or 5+ years.
+- resume_sections: an object with contact_info, summary, skills, experience, education, and additional_sections.
+  - Identify every section header actually present in this resume, using formatting and content cues. Do not assume a fixed set of sections. Group all bullet points and facts under the section header that immediately precedes them in the original document order. Never merge content from one section into a different section.
+  - contact_info should include name, email, phone, and links.
+  - experience should be an array of objects with company, title, dates, and bullets.
+  - education should be an array of objects with degree, institution, location, dates, grade, and details.
+  - additional_sections should be a list of objects shaped like {{heading: string, items: string[]}}; use it for certifications, projects, awards, publications, languages, hobbies, or any other section not represented by the well-known fields.
+  - For the section that corresponds to education, parse each entry into a single structured object instead of splitting every fragment into separate bullets.
+  - Ignore repeated header/footer text, confidentiality watermarks, or company names that appear as page stamps.
+  - The candidate's name is a person's full name, typically appearing near the top of the resume in a larger font or near contact details like email/phone.
+
+Resume text:
+{resume_text_for_parsing}
+
+Return ONLY valid JSON with no additional text."""
+
+
 def parse_resume(pdf_path: str) -> Dict[str, Any]:
     """
     Extract structured data from a PDF resume using Groq LLM.
@@ -163,73 +622,92 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         pdf_path: Path to the PDF resume file
     
     Returns:
-        Dictionary with keys: skills (List[str])
+        Dictionary with keys: skills (List[str]), resume_sections (dict)
     """
     try:
-        # Extract text from PDF
         resume_text = extract_text_from_pdf(pdf_path)
-        
+        logger.info("[pdf_parser] raw extracted text from %s:\n%s", pdf_path, resume_text)
+        cleaned_resume_text = _clean_resume_text(resume_text)
+        resume_text_for_parsing = cleaned_resume_text or resume_text
+
         if not resume_text.strip():
             logger.warning(f"No text extracted from {pdf_path}")
-            return {"skills": [], "experience_years": 0, "experience": None, "email": None}
-        
-        # Try Groq first, fall back to heuristic parsing if unavailable or fails
+            return {
+                "skills": [],
+                "experience_years": 0,
+                "experience": None,
+                "email": None,
+                "resume_text": "",
+                "resume_sections": {
+                    "contact_info": {"name": "", "email": None, "phone": "", "links": []},
+                    "summary": "",
+                    "skills": [],
+                    "experience": [],
+                    "education": [],
+                    "additional_sections": [],
+                },
+            }
+
         try:
             client = get_groq_client()
-            
-            message = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                max_tokens=1024,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"""Analyze this resume and extract ONLY the following information in valid JSON format:
-- skills: list of 5-8 key technical or professional skills mentioned
-- experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
-- experience: a short bucket such as Entry level, 1-3 years, 3-5 years, or 5+ years.
+            message = None
+            response_text = ""
+            json_error = None
+            groq_call_succeeded = False
+            try:
+                message = call_groq_with_retry(
+                    client,
+                    model="llama-3.1-8b-instant",
+                    max_tokens=1024,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": _build_resume_extraction_prompt(resume_text_for_parsing),
+                        }
+                    ]
+                )
+                groq_call_succeeded = True
+                response_text = message.choices[0].message.content.strip()
+            except Exception as groq_exc:
+                logger.exception("[pdf_parser] Groq call failed for %s", pdf_path)
+                raise
 
-Resume text:
-{resume_text}
-
-Return ONLY valid JSON with no additional text. Example format:
-{{"skills": ["Python", "AWS", "Docker", "React", "PostgreSQL"], "experience_years": 5, "experience": "3-5 years"}}"""
-                    }
-                ]
+            logger.info(
+                "[pdf_parser] Groq call succeeded=%s raw_response=%r",
+                groq_call_succeeded,
+                response_text,
             )
-            
-            response_text = message.choices[0].message.content.strip()
-            
-            # Check if response is empty before attempting JSON parsing
             if not response_text:
                 logger.warning("Groq returned empty response; falling back to heuristic parsing")
-                return _heuristic_resume_parse(resume_text)
-            
-            # Parse JSON response
+                return _heuristic_resume_parse(resume_text_for_parsing)
+
             try:
                 extracted_data = json.loads(response_text)
-            except json.JSONDecodeError as e:
+                logger.info("[pdf_parser] json.loads succeeded for %s", pdf_path)
+            except json.JSONDecodeError as exc:
+                json_error = exc
+                logger.exception("[pdf_parser] json.loads failed for %s", pdf_path)
                 logger.warning(
-                    f"Groq response was not valid JSON ({e}); falling back to heuristic parsing. "
+                    f"Groq response was not valid JSON ({exc}); falling back to heuristic parsing. "
                     f"Response text: {response_text!r}"
                 )
-                return _heuristic_resume_parse(resume_text)
-            
+                return _heuristic_resume_parse(resume_text_for_parsing)
+
             if not isinstance(extracted_data, dict):
                 logger.warning(
                     f"Groq JSON response was not a dict (type={type(extracted_data).__name__}); falling back to heuristic parsing. "
                     f"Response text: {response_text!r}"
                 )
-                return _heuristic_resume_parse(resume_text)
-            
+                return _heuristic_resume_parse(resume_text_for_parsing)
+
             skills = extracted_data.get("skills", [])
             if not isinstance(skills, list):
                 logger.warning(
                     f"Groq JSON response skills field is not a list (type={type(skills).__name__}); falling back to heuristic parsing. "
                     f"Response text: {response_text!r}"
                 )
-                return _heuristic_resume_parse(resume_text)
-            
-            # Validate and set defaults
+                return _heuristic_resume_parse(resume_text_for_parsing)
+
             experience_years = extracted_data.get("experience_years", 0)
             try:
                 experience_years = int(experience_years) if experience_years else 0
@@ -242,22 +720,78 @@ Return ONLY valid JSON with no additional text. Example format:
                 if not experience_years and inferred_years:
                     experience_years = inferred_years
                 extracted_experience = inferred_experience or _format_experience_summary(experience_years)
-            
+
+            resume_sections = extracted_data.get("resume_sections")
+            fallback_sections = _extract_resume_sections_from_text(resume_text_for_parsing, email=extract_email_from_text(resume_text_for_parsing))
+            if not isinstance(resume_sections, dict):
+                resume_sections = fallback_sections
+            else:
+                resume_sections.setdefault("contact_info", fallback_sections.get("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []}))
+                resume_sections.setdefault("summary", "")
+                resume_sections.setdefault("skills", skills)
+                if not (resume_sections.get("experience") or []):
+                    resume_sections["experience"] = fallback_sections.get("experience", [])
+                if not (resume_sections.get("education") or []):
+                    resume_sections["education"] = fallback_sections.get("education", [])
+                if not (resume_sections.get("additional_sections") or []):
+                    resume_sections["additional_sections"] = fallback_sections.get("additional_sections", [])
+                if not (resume_sections.get("contact_info") or {}).get("name"):
+                    resume_sections["contact_info"] = fallback_sections.get("contact_info", resume_sections.get("contact_info", {}))
+
+            resume_sections.setdefault("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []})
+            resume_sections.setdefault("summary", "")
+            resume_sections.setdefault("skills", skills)
+            resume_sections.setdefault("experience", [])
+            resume_sections.setdefault("education", [])
+            resume_sections.setdefault("additional_sections", [])
+
+            logger.info(
+                "[pdf_parser] parsed resume_sections keys=%s summary=%r skills=%s experience_len=%d education_len=%d additional_sections_len=%d contact_name=%r",
+                sorted(resume_sections.keys()),
+                resume_sections.get("summary"),
+                resume_sections.get("skills"),
+                len(resume_sections.get("experience") or []),
+                len(resume_sections.get("education") or []),
+                len(resume_sections.get("additional_sections") or []),
+                (resume_sections.get("contact_info") or {}).get("name"),
+            )
+            logger.info("[pdf_parser] full resume_sections=%s", resume_sections)
+
             return {
                 "skills": skills,
                 "experience_years": experience_years,
                 "experience": extracted_experience,
-                "email": extract_email_from_text(resume_text)
+                "email": extract_email_from_text(resume_text_for_parsing),
+                "resume_text": resume_text_for_parsing,
+                "resume_sections": resume_sections,
             }
-        
-        except (RuntimeError, AttributeError) as e:
-            # Fall back to heuristic parsing if Groq unavailable or the Groq client fails
-            logger.warning(f"Groq parsing failed ({type(e).__name__}: {e}); falling back to heuristic parsing")
-            return _heuristic_resume_parse(resume_text)
-        
-    except Exception as e:
-        logger.error(f"Error parsing resume: {e}")
-        return {"skills": [], "experience_years": 0, "experience": None, "email": None}
+
+        except GroqCallFailedError:
+            logger.error("Groq resume parsing failed after retries; propagating failure")
+            raise
+        except (RuntimeError, AttributeError) as exc:
+            logger.warning(f"Groq parsing failed ({type(exc).__name__}: {exc}); falling back to heuristic parsing")
+            return _heuristic_resume_parse(resume_text_for_parsing)
+
+    except GroqCallFailedError:
+        raise
+    except Exception as exc:
+        logger.exception("[pdf_parser] parse_resume failed for %s", pdf_path)
+        return {
+            "skills": [],
+            "experience_years": 0,
+            "experience": None,
+            "email": None,
+            "resume_text": "",
+                "resume_sections": {
+                    "contact_info": {"name": "", "email": None, "phone": "", "links": []},
+                    "summary": "",
+                    "skills": [],
+                    "experience": [],
+                    "education": [],
+                    "additional_sections": [],
+                },
+            }
 
 
 def get_resume_text(pdf_path: str) -> str:

@@ -20,6 +20,7 @@ class AgentState(TypedDict):
     extracted_skills: List[str]  # Extracted skills from resume (5-8 items)
     extracted_experience_years: int  # Candidate's total years of professional experience
     extracted_experience: str | None  # Human-readable experience summary inferred from the resume
+    resume_sections: dict  # Structured resume sections parsed from the uploaded PDF
     jobs: List[dict]  # List of scraped jobs
     tailored_resumes: List[dict]  # List of tailored resume data and file paths
     cover_letter_paths: List[str]  # List of generated cover letter file paths

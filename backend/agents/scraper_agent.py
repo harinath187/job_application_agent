@@ -4,6 +4,7 @@ Scraper Agent - Fetches job listings from SerpApi Google Jobs.
 import logging
 import json
 import os
+import re
 import time
 import random
 from typing import Any
@@ -61,8 +62,8 @@ def _build_query(role: str, location: str, experience: str | None = None) -> str
 
 def scrape_jobs(role: str, location: str, candidate_experience_years: int = 999, experience: str | None = None) -> list[dict]:
     if not SERPAPI_KEY:
-        logger.warning("SERPAPI_KEY not configured; job scraping is disabled. Returning empty job list.")
-        return []
+        logger.warning("SERPAPI_KEY not configured; job scraping is disabled. Returning mock job list for development.")
+        return _mock_jobs(role=role, location=location, wanted=MAX_RESULTS)
 
     query = _build_query(role, location, experience)
     if not query:
@@ -123,17 +124,83 @@ def _fetch_jobs(query: str, wanted: int, candidate_experience_years: int = 999) 
                 deduped.append(job)
         # Ensure we have exactly MAX_RESULTS jobs
         return deduped[:MAX_RESULTS]
-    
+
     return collected[:wanted]
 
 
+def _mock_jobs(role: str, location: str, wanted: int = 5) -> list[dict]:
+    """Return a small set of deterministic mock jobs for development when SerpApi key is missing."""
+    role_short = (role or "Software Engineer").strip() or "Software Engineer"
+    location_short = (location or "Remote").strip() or "Remote"
+    samples = []
+    for i in range(1, wanted + 1):
+        samples.append({
+            "title": f"{role_short} ({i})",
+            "company": f"ExampleCorp {i}",
+            "location": location_short,
+            "description": f"This is a mock job description for {role_short} at ExampleCorp {i}. " * 10,
+            "url": f"https://example.com/jobs/{i}",
+            "job_url": f"https://example.com/jobs/{i}",
+            "source": "mock",
+            "job_id": f"mock-{i}",
+            "required_experience_years": None,
+        })
+    return samples[:wanted]
+
+
+def _clean_description(description: str) -> str:
+    """
+    Normalize whitespace and formatting from a raw scraped job description.
+
+    Google Jobs / SerpApi descriptions frequently contain excessive blank
+    lines, inconsistent line endings, and trailing whitespace on individual
+    lines. This function cleans that up without altering the actual wording
+    of the description.
+    """
+    if not description:
+        return ""
+
+    text = description
+
+    # Normalize different line-ending styles to a single "\n"
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    # Strip trailing whitespace from each individual line
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+
+    # Collapse 3+ consecutive blank lines down to a single blank line (max)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # Collapse runs of 2+ spaces/tabs (not newlines) into a single space
+    text = re.sub(r"[ \t]{2,}", " ", text)
+
+    # Remove leading/trailing whitespace on the whole string
+    return text.strip()
+
+
+def _bulletize_description(description: str) -> str:
+    """
+    Optional secondary pass: convert common bullet markers (•, -, *, numbered
+    lists) that SerpApi sometimes embeds as literal characters into consistent
+    "- " bullet lines, one per line. Safe to call after _clean_description.
+    """
+    if not description:
+        return ""
+
+    # Insert a newline before bullet-like markers that appear mid-line
+    # e.g. "...responsibilities: • Develop • Design" -> separate lines
+    text = re.sub(r"\s*[•▪●○]\s*", "\n- ", description)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _normalise(raw: dict) -> dict:
-    import re
-    
     apply_options = raw.get("apply_options", [])
     url = apply_options[0].get("link", "") if apply_options else ""
-    description = raw.get("description", "").strip()
-    
+
+    raw_description = raw.get("description", "")
+    description = _clean_description(raw_description)
+
     # Extract experience requirement from job description
     required_experience = None
     if description:
@@ -150,7 +217,7 @@ def _normalise(raw: dict) -> dict:
                     break
                 except (ValueError, IndexError):
                     continue
-    
+
     return {
         "title": raw.get("title", "").strip(),
         "company": raw.get("company_name", "").strip(),
@@ -169,17 +236,17 @@ def _is_usable(job: dict, seen_keys: set, candidate_experience_years: int = 999)
     if key in seen_keys:
         return False
     seen_keys.add(key)
-    
+
     # Basic checks
     if not (bool(job["title"]) and bool(job["company"]) and len(job["description"]) >= MIN_DESCRIPTION_LENGTH):
         return False
-    
+
     # Experience level check: filter out jobs requiring significantly more experience
     required_experience = job.get("required_experience_years")
     if required_experience is not None and required_experience > candidate_experience_years + 2:
         logger.info(f"Filtering out {job['title']} at {job['company']}: requires {required_experience} years, candidate has {candidate_experience_years}")
         return False
-    
+
     return True
 
 

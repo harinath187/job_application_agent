@@ -123,6 +123,8 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
             status_message = "Complete!"
         elif session_status == "failed":
             status_message = "Processing failed"
+        elif session_status == "failed_empty_data":
+            status_message = "Resume data incomplete"
         elif session_status == "processing":
             # Count completed jobs to show progress
             completed_jobs = sum(1 for job in jobs if job.get("status") == "complete")
