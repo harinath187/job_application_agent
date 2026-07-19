@@ -2,6 +2,7 @@
 SQLite database initialization and operations for job application sessions.
 """
 import sqlite3
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -33,6 +34,9 @@ def init_db() -> None:
                 session_id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,
                 experience TEXT,
+                projects TEXT,
+                certifications TEXT,
+                inferred_roles TEXT,
                 created_at TEXT NOT NULL
             )
         """)
@@ -40,6 +44,12 @@ def init_db() -> None:
         session_columns = {row[1] for row in cursor.fetchall()}
         if "experience" not in session_columns:
             cursor.execute("ALTER TABLE sessions ADD COLUMN experience TEXT")
+        for column in ("projects", "certifications", "inferred_roles"):
+            if column not in session_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE sessions ADD COLUMN {column} TEXT")
+                except Exception:
+                    pass
 
         # Create search history table
         cursor.execute("""
@@ -169,6 +179,12 @@ def init_db() -> None:
         conn.commit()
 
 
+def _json_encode_list(values: list[str] | None) -> str | None:
+    if values is None:
+        return None
+    return json.dumps([str(value) for value in values if str(value).strip()])
+
+
 def insert_session(session_id: str, status: str) -> None:
     """
     Insert a new session into the database.
@@ -181,8 +197,8 @@ def insert_session(session_id: str, status: str) -> None:
         cursor = conn.cursor()
         created_at = datetime.utcnow().isoformat()
         cursor.execute(
-            "INSERT INTO sessions (session_id, status, created_at) VALUES (?, ?, ?)",
-            (session_id, status, created_at)
+            "INSERT INTO sessions (session_id, status, projects, certifications, inferred_roles, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, status, _json_encode_list([]), _json_encode_list([]), _json_encode_list([]), created_at)
         )
         conn.commit()
 
@@ -361,6 +377,26 @@ def update_session_status(session_id: str, status: str) -> None:
         cursor.execute(
             "UPDATE sessions SET status = ? WHERE session_id = ?",
             (status, session_id)
+        )
+        conn.commit()
+
+
+def update_session_profile_data(
+    session_id: str,
+    projects: list[str] | None = None,
+    certifications: list[str] | None = None,
+    inferred_roles: list[str] | None = None,
+) -> None:
+    """Persist extracted profile lists for a session."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """UPDATE sessions
+               SET projects = COALESCE(?, projects),
+                   certifications = COALESCE(?, certifications),
+                   inferred_roles = COALESCE(?, inferred_roles)
+               WHERE session_id = ?""",
+            (_json_encode_list(projects), _json_encode_list(certifications), _json_encode_list(inferred_roles), session_id),
         )
         conn.commit()
 

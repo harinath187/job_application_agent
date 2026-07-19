@@ -18,6 +18,9 @@ class AgentState(TypedDict):
     alerts_enabled: bool  # Whether automatic email alerts were enabled for this session
     alert_message: str  # Human-readable alert registration status
     extracted_skills: List[str]  # Extracted skills from resume (5-8 items)
+    projects: List[str]  # Extracted projects from resume
+    certifications: List[str]  # Extracted certifications from resume
+    inferred_roles: List[str]  # Roles inferred from extracted skills and projects
     extracted_experience_years: int  # Candidate's total years of professional experience
     extracted_experience: str | None  # Human-readable experience summary inferred from the resume
     resume_sections: dict  # Structured resume sections parsed from the uploaded PDF

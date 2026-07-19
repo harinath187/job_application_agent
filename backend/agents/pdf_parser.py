@@ -9,7 +9,10 @@ from collections import Counter
 from datetime import datetime
 from typing import Dict, Any
 
-from groq import Groq
+try:
+    from groq import Groq
+except ModuleNotFoundError:  # pragma: no cover - allows heuristic-only operation without the SDK installed
+    Groq = None
 from pypdf import PdfReader
 
 from utils.groq_client import GroqCallFailedError, call_groq_with_retry
@@ -26,6 +29,8 @@ def get_groq_client() -> Groq:
     """
     Lazily create a Groq client when resume parsing is requested.
     """
+    if Groq is None:
+        raise RuntimeError("groq package is not installed. Resume parsing via Groq is unavailable.")
     if not GROQ_API_KEY:
         raise RuntimeError("GROQ_API_KEY is not set. Resume parsing via Groq is unavailable.")
     return Groq(api_key=GROQ_API_KEY)
@@ -65,6 +70,12 @@ SECTION_ALIASES = {
     ),
     "education": (
         "education", "academic background", "education and training", "qualifications"
+    ),
+    "projects": (
+        "projects", "project experience", "selected projects", "academic projects"
+    ),
+    "certifications": (
+        "certifications", "certification", "licenses", "licenses and certifications", "credentials"
     ),
 }
 
@@ -289,6 +300,8 @@ def _extract_resume_sections_from_text(resume_text: str, email: str | None = Non
         "contact_info": contact_info,
         "summary": "",
         "skills": [],
+        "projects": [],
+        "certifications": [],
         "experience": [],
         "education": [],
         "additional_sections": [],
@@ -312,6 +325,10 @@ def _extract_resume_sections_from_text(resume_text: str, email: str | None = Non
             sections["skills"] = _parse_generic_section_entries(section_lines)
         elif section_name == "summary":
             sections["summary"] = " ".join(_parse_generic_section_entries(section_lines)).strip()
+        elif section_name == "projects":
+            sections["projects"] = _parse_generic_section_entries(section_lines)
+        elif section_name == "certifications":
+            sections["certifications"] = _parse_generic_section_entries(section_lines)
         else:
             sections["additional_sections"].append({
                 "heading": section_heading,
@@ -332,6 +349,10 @@ def _extract_resume_sections_from_text(resume_text: str, email: str | None = Non
                 section_name = "education"
             elif "skill" in normalized:
                 section_name = "skills"
+            elif "project" in normalized:
+                section_name = "projects"
+            elif "certification" in normalized or "license" in normalized or "credential" in normalized:
+                section_name = "certifications"
             elif "summary" in normalized or "profile" in normalized:
                 section_name = "summary"
             elif "experience" in normalized and "volunteer" not in normalized and "community" not in normalized:
@@ -396,6 +417,41 @@ def _extract_resume_sections_from_text(resume_text: str, email: str | None = Non
         sections["additional_sections"] = kept_additional
 
     return sections
+
+
+def _extract_section_entries_by_headers(resume_text: str, keywords: tuple[str, ...]) -> list[str]:
+    cleaned_text = _clean_resume_text(resume_text) or resume_text or ""
+    lines = [line.strip() for line in cleaned_text.splitlines() if line.strip()]
+    collected: list[str] = []
+    collecting = False
+    for idx, line in enumerate(lines):
+        normalized = _normalize_header_text(line.rstrip(":"))
+        if any(keyword in normalized for keyword in keywords):
+            collecting = True
+            continue
+        if collecting and _is_probable_section_header(line, next_line=lines[idx + 1] if idx + 1 < len(lines) else "", line_index=idx):
+            break
+        if collecting:
+            collected.extend(_parse_generic_section_entries([line]))
+    return [item for item in collected if item]
+
+
+def _heuristic_extract_projects(resume_text: str) -> list[str]:
+    explicit = _extract_section_entries_by_headers(resume_text, ("project",))
+    if explicit:
+        return explicit
+    pattern = re.compile(r"(?im)^\s*(?:[-*•]|\d+[.)])\s*(.+(?:project|built|developed|implemented|designed).*)$")
+    items = [match.group(1).strip() for match in pattern.finditer(resume_text or "")]
+    return list(dict.fromkeys(items))
+
+
+def _heuristic_extract_certifications(resume_text: str) -> list[str]:
+    explicit = _extract_section_entries_by_headers(resume_text, ("certification", "license", "credential"))
+    if explicit:
+        return explicit
+    pattern = re.compile(r"(?im)^\s*(?:[-*•]|\d+[.)])\s*(.+(?:certif|license|credential|aws|azure|pmp|cissp|cisa|scrum).*)$")
+    items = [match.group(1).strip() for match in pattern.finditer(resume_text or "")]
+    return list(dict.fromkeys(items))
 
 
 def _parse_generic_section_entries(section_lines: list[str]) -> list[str]:
@@ -534,6 +590,8 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
     email = extract_email_from_text(cleaned_resume_text)
     resume_sections = _extract_resume_sections_from_text(cleaned_resume_text, email=email)
     resume_sections["skills"] = skills
+    resume_sections["projects"] = _heuristic_extract_projects(cleaned_resume_text)
+    resume_sections["certifications"] = _heuristic_extract_certifications(cleaned_resume_text)
 
     return {
         "skills": skills,
@@ -542,6 +600,8 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
         "email": email,
         "resume_text": cleaned_resume_text,
         "resume_sections": resume_sections,
+        "projects": resume_sections["projects"],
+        "certifications": resume_sections["certifications"],
     }
 
 
@@ -596,14 +656,16 @@ def _build_resume_extraction_prompt(resume_text_for_parsing: str) -> str:
     """Build the Groq prompt used for resume extraction."""
     return f"""Analyze this resume and extract ONLY the following information in valid JSON format:
 - skills: list of 5-8 key technical or professional skills mentioned.
+- projects: list of notable projects, hackathons, research projects, or portfolio items.
+- certifications: list of professional certifications, licenses, or credentials.
 - experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
 - experience: a short bucket such as Entry level, 1-3 years, 3-5 years, or 5+ years.
-- resume_sections: an object with contact_info, summary, skills, experience, education, and additional_sections.
+- resume_sections: an object with contact_info, summary, skills, projects, certifications, experience, education, and additional_sections.
   - Identify every section header actually present in this resume, using formatting and content cues. Do not assume a fixed set of sections. Group all bullet points and facts under the section header that immediately precedes them in the original document order. Never merge content from one section into a different section.
   - contact_info should include name, email, phone, and links.
   - experience should be an array of objects with company, title, dates, and bullets.
   - education should be an array of objects with degree, institution, location, dates, grade, and details.
-  - additional_sections should be a list of objects shaped like {{heading: string, items: string[]}}; use it for certifications, projects, awards, publications, languages, hobbies, or any other section not represented by the well-known fields.
+- additional_sections should be a list of objects shaped like {{heading: string, items: string[]}}; use it for certifications, projects, awards, publications, languages, hobbies, or any other section not represented by the well-known fields.
   - For the section that corresponds to education, parse each entry into a single structured object instead of splitting every fragment into separate bullets.
   - Ignore repeated header/footer text, confidentiality watermarks, or company names that appear as page stamps.
   - The candidate's name is a person's full name, typically appearing near the top of the resume in a larger font or near contact details like email/phone.
@@ -612,6 +674,12 @@ Resume text:
 {resume_text_for_parsing}
 
 Return ONLY valid JSON with no additional text."""
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
 
 
 def parse_resume(pdf_path: str) -> Dict[str, Any]:
@@ -669,8 +737,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 groq_call_succeeded = True
                 response_text = message.choices[0].message.content.strip()
             except Exception as groq_exc:
-                logger.exception("[pdf_parser] Groq call failed for %s", pdf_path)
-                raise
+                logger.warning("[pdf_parser] Groq call failed for %s: %s", pdf_path, groq_exc)
+                return _heuristic_resume_parse(resume_text_for_parsing)
 
             logger.info(
                 "[pdf_parser] Groq call succeeded=%s raw_response=%r",
@@ -707,6 +775,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                     f"Response text: {response_text!r}"
                 )
                 return _heuristic_resume_parse(resume_text_for_parsing)
+            projects = _normalize_string_list(extracted_data.get("projects", []))
+            certifications = _normalize_string_list(extracted_data.get("certifications", []))
 
             experience_years = extracted_data.get("experience_years", 0)
             try:
@@ -729,27 +799,37 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 resume_sections.setdefault("contact_info", fallback_sections.get("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []}))
                 resume_sections.setdefault("summary", "")
                 resume_sections.setdefault("skills", skills)
+                resume_sections.setdefault("projects", projects)
+                resume_sections.setdefault("certifications", certifications)
                 if not (resume_sections.get("experience") or []):
                     resume_sections["experience"] = fallback_sections.get("experience", [])
                 if not (resume_sections.get("education") or []):
                     resume_sections["education"] = fallback_sections.get("education", [])
                 if not (resume_sections.get("additional_sections") or []):
                     resume_sections["additional_sections"] = fallback_sections.get("additional_sections", [])
+                if not (resume_sections.get("projects") or []):
+                    resume_sections["projects"] = fallback_sections.get("projects", [])
+                if not (resume_sections.get("certifications") or []):
+                    resume_sections["certifications"] = fallback_sections.get("certifications", [])
                 if not (resume_sections.get("contact_info") or {}).get("name"):
                     resume_sections["contact_info"] = fallback_sections.get("contact_info", resume_sections.get("contact_info", {}))
 
             resume_sections.setdefault("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []})
             resume_sections.setdefault("summary", "")
             resume_sections.setdefault("skills", skills)
+            resume_sections.setdefault("projects", projects)
+            resume_sections.setdefault("certifications", certifications)
             resume_sections.setdefault("experience", [])
             resume_sections.setdefault("education", [])
             resume_sections.setdefault("additional_sections", [])
 
             logger.info(
-                "[pdf_parser] parsed resume_sections keys=%s summary=%r skills=%s experience_len=%d education_len=%d additional_sections_len=%d contact_name=%r",
+                "[pdf_parser] parsed resume_sections keys=%s summary=%r skills=%s projects=%s certifications=%s experience_len=%d education_len=%d additional_sections_len=%d contact_name=%r",
                 sorted(resume_sections.keys()),
                 resume_sections.get("summary"),
                 resume_sections.get("skills"),
+                resume_sections.get("projects"),
+                resume_sections.get("certifications"),
                 len(resume_sections.get("experience") or []),
                 len(resume_sections.get("education") or []),
                 len(resume_sections.get("additional_sections") or []),
@@ -759,6 +839,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
 
             return {
                 "skills": skills,
+                "projects": projects,
+                "certifications": certifications,
                 "experience_years": experience_years,
                 "experience": extracted_experience,
                 "email": extract_email_from_text(resume_text_for_parsing),
@@ -767,8 +849,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
             }
 
         except GroqCallFailedError:
-            logger.error("Groq resume parsing failed after retries; propagating failure")
-            raise
+            logger.warning("Groq resume parsing failed after retries; falling back to heuristic parsing")
+            return _heuristic_resume_parse(resume_text_for_parsing)
         except (RuntimeError, AttributeError) as exc:
             logger.warning(f"Groq parsing failed ({type(exc).__name__}: {exc}); falling back to heuristic parsing")
             return _heuristic_resume_parse(resume_text_for_parsing)
@@ -779,6 +861,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         logger.exception("[pdf_parser] parse_resume failed for %s", pdf_path)
         return {
             "skills": [],
+            "projects": [],
+            "certifications": [],
             "experience_years": 0,
             "experience": None,
             "email": None,
@@ -787,6 +871,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                     "contact_info": {"name": "", "email": None, "phone": "", "links": []},
                     "summary": "",
                     "skills": [],
+                    "projects": [],
+                    "certifications": [],
                     "experience": [],
                     "education": [],
                     "additional_sections": [],
