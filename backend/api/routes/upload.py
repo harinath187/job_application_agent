@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from orchestrator.graph import build_graph
 from orchestrator.state import AgentState
 from utils.file_helpers import save_upload, RESUMES_DIR, get_relative_path
-from utils.db import insert_session, insert_job, insert_search_history, update_job_status, update_session_status, update_session_experience
+from utils.db import insert_session, insert_job, insert_search_history, update_job_status, update_session_status, update_session_experience, get_session_status
 
 
 logging.basicConfig(level=logging.INFO)
@@ -58,9 +58,13 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str,
         # Run the graph - jobs will be inserted and updated incrementally during execution
         result = graph.invoke(initial_state)
         
-        # Mark session as complete
-        update_session_status(session_id, "complete")
-        logger.info(f"Session {session_id} completed successfully")
+        final_status = get_session_status(session_id)
+        if final_status == "needs_experience_input":
+            update_session_status(session_id, "needs_experience_input")
+            logger.info("Session %s paused awaiting experience input", session_id)
+        else:
+            update_session_status(session_id, "completed")
+            logger.info(f"Session {session_id} completed successfully")
     
     except Exception as e:
         logger.error(f"Error in agent pipeline for session {session_id}: {e}")

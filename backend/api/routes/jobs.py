@@ -86,11 +86,12 @@ async def search_history_item(session_id: str) -> JSONResponse:
         alert_status = get_session_alert_status(session_id)
         return JSONResponse(
             status_code=200,
-            content={
+        content={
                 "history": history[0],
                 "jobs": jobs,
                 "session_id": session_id,
                 "status": session_status,
+                "session_status": session_status,
                 **alert_status
             }
         )
@@ -119,10 +120,12 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
         
         # Determine overall status message
         status_message = "Processing..."
-        if session_status == "complete":
+        if session_status in {"complete", "completed"}:
             status_message = "Complete!"
         elif session_status == "failed":
             status_message = "Processing failed"
+        elif session_status == "needs_experience_input":
+            status_message = "Experience input needed"
         elif session_status == "failed_empty_data":
             status_message = "Resume data incomplete"
         elif session_status == "processing":
@@ -142,6 +145,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                     "jobs": [],
                     "count": 0,
                     "status": status_message,
+                    "session_status": session_status,
                     **alert_status
                 }
             )
@@ -171,6 +175,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "jobs": job_list,
                 "count": len(job_list),
                 "status": status_message,
+                "session_status": session_status,
                 **alert_status
             }
         )

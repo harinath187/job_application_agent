@@ -37,6 +37,7 @@ def init_db() -> None:
                 projects TEXT,
                 certifications TEXT,
                 inferred_roles TEXT,
+                parsed_resume_data TEXT,
                 created_at TEXT NOT NULL
             )
         """)
@@ -50,6 +51,11 @@ def init_db() -> None:
                     cursor.execute(f"ALTER TABLE sessions ADD COLUMN {column} TEXT")
                 except Exception:
                     pass
+        if "parsed_resume_data" not in session_columns:
+            try:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN parsed_resume_data TEXT")
+            except Exception:
+                pass
 
         # Create search history table
         cursor.execute("""
@@ -185,6 +191,21 @@ def _json_encode_list(values: list[str] | None) -> str | None:
     return json.dumps([str(value) for value in values if str(value).strip()])
 
 
+def _json_encode(value: Any) -> str | None:
+    if value is None:
+        return None
+    return json.dumps(value)
+
+
+def _json_decode(value: str | None) -> Any:
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
 def insert_session(session_id: str, status: str) -> None:
     """
     Insert a new session into the database.
@@ -197,8 +218,8 @@ def insert_session(session_id: str, status: str) -> None:
         cursor = conn.cursor()
         created_at = datetime.utcnow().isoformat()
         cursor.execute(
-            "INSERT INTO sessions (session_id, status, projects, certifications, inferred_roles, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (session_id, status, _json_encode_list([]), _json_encode_list([]), _json_encode_list([]), created_at)
+            "INSERT INTO sessions (session_id, status, projects, certifications, inferred_roles, parsed_resume_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (session_id, status, _json_encode_list([]), _json_encode_list([]), _json_encode_list([]), _json_encode({}), created_at)
         )
         conn.commit()
 
@@ -381,6 +402,10 @@ def update_session_status(session_id: str, status: str) -> None:
         conn.commit()
 
 
+def set_session_status(session_id: str, status: str) -> None:
+    update_session_status(session_id, status)
+
+
 def update_session_profile_data(
     session_id: str,
     projects: list[str] | None = None,
@@ -399,6 +424,25 @@ def update_session_profile_data(
             (_json_encode_list(projects), _json_encode_list(certifications), _json_encode_list(inferred_roles), session_id),
         )
         conn.commit()
+
+
+def update_session_parsed_resume_data(session_id: str, parsed_data: Dict[str, Any]) -> None:
+    """Persist the parsed resume payload so the pipeline can resume without reparsing."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE sessions SET parsed_resume_data = ? WHERE session_id = ?",
+            (_json_encode(parsed_data), session_id),
+        )
+        conn.commit()
+
+
+def get_session_data(session_id: str) -> Dict[str, Any] | None:
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
 
 
 def update_session_experience(session_id: str, experience: str | None) -> None:

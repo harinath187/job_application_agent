@@ -31,6 +31,22 @@ function getStatusFromJobs(jobs, isProcessing) {
   return 'Searching jobs...'
 }
 
+function getBackendStatus(data, jobsData) {
+  if (data?.session_status) {
+    return data.session_status
+  }
+  if (data?.status === 'Experience input needed') {
+    return 'needs_experience_input'
+  }
+  if (jobsData.some((job) => job.status === 'failed')) {
+    return 'failed'
+  }
+  if (jobsData.length > 0 && jobsData.every((job) => job.status === 'complete')) {
+    return 'completed'
+  }
+  return 'processing'
+}
+
 function loadStoredSession() {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
@@ -117,7 +133,8 @@ export function JobAgentProvider({ children }) {
       try {
         const data = await agentApi.getJobStatus(currentSessionId)
         const jobsData = data.jobs || []
-        const processingStatus = getStatusFromJobs(jobsData, true)
+        const backendStatus = getBackendStatus(data, jobsData)
+        const processingStatus = backendStatus === 'needs_experience_input' ? 'needs_experience_input' : getStatusFromJobs(jobsData, true)
         const nextAlertInfo = {
           alertsEnabled: Boolean(data.alerts_enabled),
           alertEmail: data.alert_email || null,
@@ -126,30 +143,30 @@ export function JobAgentProvider({ children }) {
 
         setJobs(jobsData)
         setStatus(processingStatus)
-        setIsProcessing(true)
+        setIsProcessing(backendStatus === 'processing')
         setError('')
         setAlertInfo(nextAlertInfo)
-        persistSession({ sessionId: currentSessionId, jobs: jobsData, status: processingStatus, isProcessing: true, alertInfo: nextAlertInfo })
+        persistSession({ sessionId: currentSessionId, jobs: jobsData, status: processingStatus, isProcessing: backendStatus === 'processing', alertInfo: nextAlertInfo })
+
+        if (backendStatus === 'needs_experience_input') {
+          setIsProcessing(false)
+          clearPolling()
+          return
+        }
 
         if (jobsData.some((job) => job.status === 'failed')) {
           setError('One or more jobs failed during processing.')
           setIsProcessing(false)
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
-          }
+          clearPolling()
           persistSession({ isProcessing: false })
           return
         }
 
-        const allComplete = jobsData.length > 0 && jobsData.every((job) => job.status === 'complete')
+        const allComplete = backendStatus === 'completed'
         if (allComplete) {
           setStatus('Complete!')
           setIsProcessing(false)
-          if (intervalRef.current) {
-            clearInterval(intervalRef.current)
-            intervalRef.current = null
-          }
+          clearPolling()
           persistSession({ status: 'Complete!', isProcessing: false })
         }
       } catch (err) {
@@ -163,7 +180,7 @@ export function JobAgentProvider({ children }) {
         persistSession({ isProcessing: false })
       }
     },
-    [persistSession]
+    [clearPolling, persistSession]
   )
 
   const startPolling = useCallback(
@@ -237,7 +254,7 @@ export function JobAgentProvider({ children }) {
         throw err
       }
     },
-    [persistSession, pollJobs]
+    [persistSession, pollJobs, startPolling]
   )
 
   const stopAgent = useCallback(() => {
@@ -247,6 +264,23 @@ export function JobAgentProvider({ children }) {
     setStatus('Stopped')
     persistSession({ status: 'Stopped', isProcessing: false })
   }, [clearPolling, persistSession])
+
+  const submitExperienceLevel = useCallback(
+    async (experienceLevel) => {
+      if (!sessionId) {
+        return null
+      }
+
+      const response = await agentApi.submitExperienceLevel(sessionId, experienceLevel)
+      setStatus(response.status || 'processing')
+      setIsProcessing(true)
+      persistSession({ status: response.status || 'processing', isProcessing: true })
+      startPolling(sessionId)
+      await pollJobs(sessionId)
+      return response
+    },
+    [persistSession, pollJobs, sessionId, startPolling]
+  )
 
   useEffect(() => {
     const stored = loadStoredSession()
@@ -299,9 +333,10 @@ export function JobAgentProvider({ children }) {
       loadSession,
       clearSessionStorage,
       handleDownload,
+      submitExperienceLevel,
       toggleTheme
     }),
-    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, toggleTheme]
+    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, handleDownload, submitExperienceLevel, toggleTheme]
   )
 
   return (

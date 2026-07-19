@@ -595,6 +595,7 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
 
     return {
         "skills": skills,
+        "experience_level": _detect_experience_level(cleaned_resume_text),
         "experience_years": experience_years,
         "experience": _format_experience_summary(experience_years) if experience_years else None,
         "email": email,
@@ -603,6 +604,43 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
         "projects": resume_sections["projects"],
         "certifications": resume_sections["certifications"],
     }
+
+
+def _detect_experience_level(resume_text: str) -> str | None:
+    """Return fresher/1-2/3-5/5+ when the resume contains enough evidence."""
+    if not resume_text:
+        return None
+
+    normalized = re.sub(r"\s+", " ", resume_text.lower())
+
+    explicit = [
+        int(match.group(1))
+        for match in re.finditer(r"(\d+)\+?\s*years?\s*(?:of\s*)?(?:professional\s*)?(?:experience|work)", normalized)
+    ]
+    if explicit:
+        years = max(explicit)
+        if years <= 0:
+            return "fresher"
+        if years <= 2:
+            return "1-2"
+        if years <= 5:
+            return "3-5"
+        return "5+"
+
+    if re.search(r"\bintern(ship)?\b", normalized):
+        return "fresher"
+
+    if re.search(r"(19|20)\d{2}\s*[-–—to]+\s*(?:present|current|(19|20)\d{2})", normalized):
+        inferred_years, _ = _infer_experience_from_resume_text(resume_text)
+        if inferred_years <= 0:
+            return "fresher"
+        if inferred_years <= 2:
+            return "1-2"
+        if inferred_years <= 5:
+            return "3-5"
+        return "5+"
+
+    return None
 
 
 def _format_experience_summary(years: int) -> str:
@@ -702,6 +740,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
             logger.warning(f"No text extracted from {pdf_path}")
             return {
                 "skills": [],
+                "experience_level": None,
                 "experience_years": 0,
                 "experience": None,
                 "email": None,
@@ -777,6 +816,9 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 return _heuristic_resume_parse(resume_text_for_parsing)
             projects = _normalize_string_list(extracted_data.get("projects", []))
             certifications = _normalize_string_list(extracted_data.get("certifications", []))
+            experience_level = extracted_data.get("experience_level")
+            if experience_level not in {"fresher", "1-2", "3-5", "5+"}:
+                experience_level = _detect_experience_level(resume_text_for_parsing)
 
             experience_years = extracted_data.get("experience_years", 0)
             try:
@@ -841,6 +883,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 "skills": skills,
                 "projects": projects,
                 "certifications": certifications,
+                "experience_level": experience_level,
                 "experience_years": experience_years,
                 "experience": extracted_experience,
                 "email": extract_email_from_text(resume_text_for_parsing),
@@ -863,6 +906,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
             "skills": [],
             "projects": [],
             "certifications": [],
+            "experience_level": None,
             "experience_years": 0,
             "experience": None,
             "email": None,

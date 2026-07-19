@@ -13,8 +13,11 @@ from agents.cover_letter_agent import generate_cover_letter
 from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
 from utils.db import (
     insert_job,
+    get_session_data,
+    get_search_history,
+    set_session_status,
+    update_session_parsed_resume_data,
     update_job_status,
-    update_session_status,
     upsert_alert_preference_for_user,
     upsert_alert_user,
     upsert_session_alert_status,
@@ -60,11 +63,13 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     state["extracted_experience_years"] = parsed_data.get("experience_years", 0)
     state["extracted_experience"] = parsed_data.get("experience")
     state["resume_sections"] = parsed_data.get("resume_sections", {})
+    state["experience_level"] = parsed_data.get("experience_level")
 
     inferred_roles = infer_roles(state.get("extracted_skills", []), state.get("projects", []))
     state["inferred_roles"] = inferred_roles
     session_id = state.get("session_id")
     if session_id:
+        update_session_parsed_resume_data(session_id, parsed_data)
         update_session_profile_data(
             session_id=session_id,
             projects=state.get("projects", []),
@@ -89,6 +94,55 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     return state
 
 
+def _run_post_parse_pipeline(state: AgentState) -> AgentState:
+    state = auto_alert_registration_node(state)
+    state = scraper_node(state)
+    state = tailor_node(state)
+    state = cover_letter_node(state)
+    return state
+
+
+def resume_from_scraper_node(session_id: str, experience_level: str) -> AgentState:
+    session_data = get_session_data(session_id)
+    if not session_data:
+        raise ValueError("Session not found")
+    if session_data.get("status") == "completed":
+        raise ValueError("Session already completed")
+
+    history_rows = get_search_history(session_id=session_id)
+    history = history_rows[0] if history_rows else {}
+
+    parsed_data = session_data.get("parsed_resume_data")
+    if isinstance(parsed_data, str):
+        import json
+        parsed_data = json.loads(parsed_data) if parsed_data else {}
+    parsed_data = parsed_data or {}
+
+    state: AgentState = {
+        "session_id": session_id,
+        "resume_path": history.get("resume_path", ""),
+        "resume_text": parsed_data.get("resume_text", ""),
+        "extracted_role": history.get("role", ""),
+        "extracted_location": history.get("location", ""),
+        "user_experience": session_data.get("experience"),
+        "extracted_email": parsed_data.get("email"),
+        "alerts_enabled": False,
+        "alert_message": "",
+        "extracted_skills": parsed_data.get("skills", []),
+        "projects": parsed_data.get("projects", []),
+        "certifications": parsed_data.get("certifications", []),
+        "inferred_roles": parsed_data.get("inferred_roles", []),
+        "experience_level": experience_level,
+        "extracted_experience_years": parsed_data.get("experience_years", 0),
+        "extracted_experience": parsed_data.get("experience"),
+        "resume_sections": parsed_data.get("resume_sections", {}),
+        "jobs": [],
+        "tailored_resumes": [],
+        "cover_letter_paths": [],
+    }
+    return _run_post_parse_pipeline(state)
+
+
 def auto_alert_registration_node(state: AgentState) -> AgentState:
     """
     Node that automatically registers email alerts from the resume email.
@@ -97,6 +151,13 @@ def auto_alert_registration_node(state: AgentState) -> AgentState:
     email = state.get("extracted_email")
     role = state.get("extracted_role", "")
     location = state.get("extracted_location", "")
+
+    if state.get("experience_level") is None:
+        if session_id:
+            set_session_status(session_id, "needs_experience_input")
+        logger.warning("Experience level missing for session %s; pausing before scraper node", session_id)
+        state["alert_message"] = "Experience input required before job search can continue."
+        return state
 
     if not email:
         message = "No email address found in resume; email alerts were not enabled."
@@ -322,7 +383,14 @@ def build_graph():
     # Define edges (linear flow)
     workflow.set_entry_point("pdf_parser")
     workflow.add_edge("pdf_parser", "auto_alert_registration")
-    workflow.add_edge("auto_alert_registration", "scraper")
+    workflow.add_conditional_edges(
+        "auto_alert_registration",
+        lambda state: "end" if state.get("experience_level") is None else "scraper",
+        {
+            "end": END,
+            "scraper": "scraper",
+        },
+    )
     workflow.add_edge("scraper", "tailor")
     workflow.add_edge("tailor", "cover_letter")
     workflow.add_edge("cover_letter", END)

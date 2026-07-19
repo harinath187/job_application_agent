@@ -47,6 +47,18 @@ async function getJobStatus(sessionId) {
   }
 }
 
+async function submitExperienceLevel(sessionId, experienceLevel) {
+  try {
+    const response = await http.post(`/sessions/${sessionId}/experience`, {
+      experience_level: experienceLevel
+    })
+    return response.data
+  } catch (error) {
+    console.error('submitExperienceLevel error', error)
+    throw error
+  }
+}
+
 async function getJobDetail(jobId) {
   try {
     const response = await http.get(`/jobs/${jobId}`)
@@ -168,6 +180,7 @@ async function unsubscribe(email) {
 export const agentApi = {
   uploadResume,
   getJobStatus,
+  submitExperienceLevel,
   getSearchHistory,
   getSearchHistoryItem,
   deleteSearchHistoryItem,

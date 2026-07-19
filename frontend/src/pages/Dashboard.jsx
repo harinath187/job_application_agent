@@ -11,10 +11,11 @@ export function Dashboard() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const jobReferenceId = searchParams.get('jobReferenceId')
-  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload } = useJobAgent()
+  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload, submitExperienceLevel } = useJobAgent()
 
   const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete').length, [jobs])
   const isComplete = status === 'Complete!'
+  const needsExperienceInput = status === 'needs_experience_input'
 
   useEffect(() => {
     const activeSession = jobReferenceId || sessionId
@@ -55,6 +56,24 @@ export function Dashboard() {
 
           <StatusBar status={status} jobsTotal={jobs.length} jobsComplete={jobsComplete} />
           {error && <div className="rounded-3xl border border-red-700 bg-red-950 p-4 text-sm text-red-200">{error}</div>}
+          {needsExperienceInput && (
+            <div className="rounded-3xl border border-amber-500/30 bg-amber-950/40 p-5 text-amber-50">
+              <h2 className="text-lg font-semibold">Pick your experience level</h2>
+              <p className="mt-2 text-sm text-amber-100/80">We paused the pipeline because the resume did not provide a reliable experience signal.</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {[
+                  ['Fresher', 'fresher'],
+                  ['1-2', '1-2'],
+                  ['3-5', '3-5'],
+                  ['5+', '5+']
+                ].map(([label, value]) => (
+                  <Button key={value} variant="secondary" onClick={() => submitExperienceLevel(value)} disabled={isProcessing}>
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
           <AlertOptIn
             isComplete={isComplete}
             alertsEnabled={alertInfo.alertsEnabled}

@@ -5,11 +5,16 @@ import { UploadBox } from '../components/dashboard/UploadBox.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
 
-const EXPERIENCE_OPTIONS = ['Entry level', '1-3 years', '3-5 years', '5+ years']
+const EXPERIENCE_OPTIONS = [
+  { label: 'Fresher', value: 'fresher' },
+  { label: '1-2', value: '1-2' },
+  { label: '3-5', value: '3-5' },
+  { label: '5+', value: '5+' }
+]
 
 export function Home() {
   const navigate = useNavigate()
-  const { startAgent } = useJobAgent()
+  const { startAgent, status, submitExperienceLevel } = useJobAgent()
   const [selectedFile, setSelectedFile] = useState(null)
   const [role, setRole] = useState('')
   const [location, setLocation] = useState('')
@@ -17,6 +22,7 @@ export function Home() {
   const [error, setError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [uploadKey, setUploadKey] = useState(0)
+  const needsExperienceInput = status === 'needs_experience_input'
 
   const handleFileSelect = (file, validationError) => {
     setError(validationError || '')
@@ -26,6 +32,14 @@ export function Home() {
     }
 
     setSelectedFile(file)
+  }
+
+  const handleExperienceSelect = async (experienceLevel) => {
+    try {
+      await submitExperienceLevel(experienceLevel)
+    } catch (err) {
+      setError('Unable to resume the session. Please try again.')
+    }
   }
 
   const handleRemoveFile = () => {
@@ -160,6 +174,19 @@ export function Home() {
         </div>
         {error && <p className="mt-6 text-sm text-red-400">{error}</p>}
       </section>
+      {needsExperienceInput && (
+        <section className="rounded-[2rem] border border-amber-500/30 bg-amber-950/40 p-6 text-amber-50 shadow-lg shadow-black/20">
+          <h2 className="text-lg font-semibold">Select your experience level</h2>
+          <p className="mt-2 text-sm text-amber-100/80">The parser could not determine your experience automatically. Pick the closest match so we can continue.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {EXPERIENCE_OPTIONS.map((option) => (
+              <Button key={option.value} variant="secondary" onClick={() => handleExperienceSelect(option.value)} disabled={isProcessing}>
+                {option.label}
+              </Button>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   )
 }
