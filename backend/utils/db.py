@@ -2,6 +2,7 @@
 SQLite database initialization and operations for job application sessions.
 """
 import sqlite3
+import json
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -40,6 +41,12 @@ def init_db() -> None:
         session_columns = {row[1] for row in cursor.fetchall()}
         if "experience" not in session_columns:
             cursor.execute("ALTER TABLE sessions ADD COLUMN experience TEXT")
+        for column in ("projects", "certifications", "inferred_roles"):
+            if column not in session_columns:
+                try:
+                    cursor.execute(f"ALTER TABLE sessions ADD COLUMN {column} TEXT")
+                except sqlite3.Error:
+                    pass
 
         # Create search history table
         cursor.execute("""
@@ -372,6 +379,31 @@ def update_session_experience(session_id: str, experience: str | None) -> None:
         cursor.execute(
             "UPDATE sessions SET experience = ? WHERE session_id = ?",
             (experience, session_id)
+        )
+        conn.commit()
+
+
+def update_session_profile(
+    session_id: str,
+    projects: list[str] | None = None,
+    certifications: list[str] | None = None,
+    inferred_roles: list[str] | None = None,
+) -> None:
+    """Persist extracted profile fields on the session record."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """UPDATE sessions
+               SET projects = COALESCE(?, projects),
+                   certifications = COALESCE(?, certifications),
+                   inferred_roles = COALESCE(?, inferred_roles)
+               WHERE session_id = ?""",
+            (
+                json.dumps(projects or []),
+                json.dumps(certifications or []),
+                json.dumps(inferred_roles or []),
+                session_id,
+            )
         )
         conn.commit()
 
