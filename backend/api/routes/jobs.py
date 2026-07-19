@@ -22,6 +22,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["jobs"])
+API_COMPLETED_STATUS = "completed"
+API_GENERATION_FAILED_STATUS = "generation_failed"
+
+
+def _job_status_for_api(status: str | None) -> str:
+    if status in {"complete", "completed"}:
+        return API_COMPLETED_STATUS
+    if status == API_GENERATION_FAILED_STATUS:
+        return API_GENERATION_FAILED_STATUS
+    return status or "pending"
 
 
 class JobResponse(BaseModel):
@@ -137,7 +147,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
             status_message = "Resume data incomplete"
         elif session_status == "processing":
             # Count completed jobs to show progress
-            completed_jobs = sum(1 for job in jobs if job.get("status") == "complete")
+            completed_jobs = sum(1 for job in jobs if _job_status_for_api(job.get("status")) == API_COMPLETED_STATUS)
             total_jobs = len(jobs)
             if total_jobs > 0:
                 status_message = f"Processing jobs ({completed_jobs}/{total_jobs})..."
@@ -178,7 +188,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "seniority_bucket": job.get("seniority_bucket"),
                 "resume_path": job.get("resume_path"),
                 "cover_letter_path": job.get("cover_letter_path"),
-                "status": job.get("status", "pending")
+                "status": _job_status_for_api(job.get("status"))
             })
         
         logger.info(f"Retrieved {len(job_list)} jobs for session {session_id}")
@@ -237,7 +247,7 @@ async def get_job_detail(job_id: int) -> JSONResponse:
                     "seniority_bucket": job.get("seniority_bucket"),
                     "resume_path": job.get("resume_path"),
                     "cover_letter_path": job.get("cover_letter_path"),
-                    "status": job.get("status", "pending")
+                    "status": _job_status_for_api(job.get("status"))
                 }
             }
         )

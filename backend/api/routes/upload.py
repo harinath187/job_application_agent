@@ -51,6 +51,7 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str,
             "extracted_experience_years": 0,
             "extracted_experience": None,
             "jobs": [],
+            "top_ranked_jobs": [],
             "tailored_resumes": [],
             "cover_letter_paths": []
         }

@@ -25,6 +25,7 @@ class AgentState(TypedDict):
     extracted_experience: str | None  # Human-readable experience summary inferred from the resume
     resume_sections: dict  # Structured resume sections parsed from the uploaded PDF
     jobs: List[dict]  # List of scraped jobs; each job may include source_city/source_role as str or list[str] and role_confidence as float
+    top_ranked_jobs: List[dict]  # Final top-N jobs selected after Phase 6 ranking
     tailored_resumes: List[dict]  # List of tailored resume data and file paths
     cover_letter_paths: List[str]  # List of generated cover letter file paths
     validation_stats: dict  # Validation summary counts for job filtering

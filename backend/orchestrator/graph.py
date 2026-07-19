@@ -33,6 +33,8 @@ from utils.groq_client import GroqCallFailedError
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 FINAL_JOB_LIMIT = int(os.getenv("FINAL_JOB_LIMIT", "10"))
+GENERATION_FAILED_STATUS = "generation_failed"
+COMPLETED_STATUS = "complete"
 
 
 def pdf_parser_node(state: AgentState) -> AgentState:
@@ -142,6 +144,7 @@ def resume_from_scraper_node(session_id: str, experience_level: str) -> AgentSta
         "extracted_experience": parsed_data.get("experience"),
         "resume_sections": parsed_data.get("resume_sections", {}),
         "jobs": [],
+        "top_ranked_jobs": [],
         "tailored_resumes": [],
         "cover_letter_paths": [],
     }
@@ -231,8 +234,9 @@ def scraper_node(state: AgentState) -> AgentState:
     for job in final_jobs:
         job_id = insert_job(session_id, job)
         job["id"] = job_id  # Add the database ID to the job
-    
+
     state["jobs"] = final_jobs
+    state["top_ranked_jobs"] = final_jobs
 
     return state
 
@@ -252,7 +256,8 @@ def tailor_node(state: AgentState) -> AgentState:
     resume_text = state.get("resume_text", "")
     skills = state.get("extracted_skills", [])
     
-    for job in state.get("jobs", []):
+    jobs_to_process = state.get("top_ranked_jobs") or state.get("jobs", [])
+    for job in jobs_to_process:
         time.sleep(2)
         logger.info(f"Tailoring resume for {job.get('title')} at {job.get('company')}")
 
@@ -269,14 +274,20 @@ def tailor_node(state: AgentState) -> AgentState:
         except GroqCallFailedError as exc:
             job_id = job.get("id")
             if job_id:
-                update_job_status(job_id=job_id, status="failed_rate_limit", resume_path=None, cover_letter_path=None)
-            logger.error("Tailoring stopped for job %s due to Groq rate limiting: %s", job.get("title", ""), exc)
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.error("Tailoring failed for job %s due to Groq rate limiting: %s", job.get("title", ""), exc)
+            continue
+        except Exception as exc:
+            job_id = job.get("id")
+            if job_id:
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.exception("Tailoring failed for job %s: %s", job.get("title", ""), exc)
             continue
 
         if tailored_data.get("status") in {"failed", "failed_rate_limit"}:
             job_id = job.get("id")
             if job_id:
-                update_job_status(job_id=job_id, status=tailored_data.get("status", "failed"), resume_path=None, cover_letter_path=None)
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
             logger.warning("Skipping resume rendering for %s because tailoring failed with reason %s", job.get("title", ""), tailored_data.get("reason"))
             continue
 
@@ -290,9 +301,8 @@ def tailor_node(state: AgentState) -> AgentState:
         if not tailored_resume_path:
             job_id = job.get("id")
             if job_id:
-                status = "failed_empty_data" if not tailored_data.get("resume_sections") else "failed"
-                update_job_status(job_id=job_id, status=status, resume_path=None, cover_letter_path=None)
-            logger.warning("No tailored resume PDF was generated for %s; marking the job as %s", job.get("title", ""), status if job_id else "failed")
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.warning("No tailored resume PDF was generated for %s; marking the job as %s", job.get("title", ""), GENERATION_FAILED_STATUS)
             continue
 
         tailored_resumes.append({
@@ -336,7 +346,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
             logger.warning("Skipping cover letter generation for %s because tailoring failed", job.get("title", ""))
             job_id = job.get("id")
             if job_id:
-                update_job_status(job_id=job_id, status="failed", resume_path=None, cover_letter_path=None)
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
             continue
 
         # Use the tailored resume summary if available (more specific than generic resume text)
@@ -353,8 +363,14 @@ def cover_letter_node(state: AgentState) -> AgentState:
         except GroqCallFailedError as exc:
             job_id = job.get("id")
             if job_id:
-                update_job_status(job_id=job_id, status="failed_rate_limit", resume_path=None, cover_letter_path=None)
-            logger.error("Cover letter generation stopped for job %s due to Groq rate limiting: %s", job.get("title", ""), exc)
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.error("Cover letter generation failed for job %s due to Groq rate limiting: %s", job.get("title", ""), exc)
+            continue
+        except Exception as exc:
+            job_id = job.get("id")
+            if job_id:
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.exception("Cover letter generation failed for job %s: %s", job.get("title", ""), exc)
             continue
 
         if cover_letter_path:
@@ -369,7 +385,7 @@ def cover_letter_node(state: AgentState) -> AgentState:
         if job_id:
             update_job_status(
                 job_id=job_id,
-                status="complete",
+                status=COMPLETED_STATUS,
                 resume_path=relative_tailored_resume_path,
                 cover_letter_path=relative_cover_letter_path
             )
