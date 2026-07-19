@@ -6,7 +6,6 @@ import time  # FIXED: Add delay support for Groq rate limit protection.
 from langgraph.graph import StateGraph, END
 from orchestrator.state import AgentState
 from agents.pdf_parser import parse_resume, get_resume_text, extract_email_from_text
-from agents.role_inferrer import infer_roles
 from agents.scraper_agent import scrape_jobs
 from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
@@ -15,7 +14,6 @@ from utils.db import (
     insert_job,
     update_job_status,
     update_session_status,
-    update_session_profile,
     upsert_alert_preference_for_user,
     upsert_alert_user,
     upsert_session_alert_status,
@@ -55,33 +53,11 @@ def pdf_parser_node(state: AgentState) -> AgentState:
     extracted_email = parsed_data.get("email") or extract_email_from_text(resume_text)
     state["extracted_email"] = extracted_email
     state["extracted_skills"] = parsed_data.get("skills", [])
-    state["projects"] = parsed_data.get("projects", [])
-    state["certifications"] = parsed_data.get("certifications", [])
     state["extracted_experience_years"] = parsed_data.get("experience_years", 0)
     state["extracted_experience"] = parsed_data.get("experience")
     state["resume_sections"] = parsed_data.get("resume_sections", {})
-    state["inferred_roles"] = infer_roles(state["extracted_skills"], state["projects"])
-    session_id = state.get("session_id")
-    if session_id:
-        update_session_profile(
-            session_id,
-            projects=state["projects"],
-            certifications=state["certifications"],
-            inferred_roles=state["inferred_roles"],
-        )
     
-    logger.info(
-        "Extracted skills=%s projects=%s certifications=%s inferred_roles=%s experience_years=%s experience=%s email=%s role=%s location=%s",
-        state["extracted_skills"],
-        state["projects"],
-        state["certifications"],
-        state["inferred_roles"],
-        state["extracted_experience_years"],
-        state.get("extracted_experience"),
-        extracted_email,
-        state.get("extracted_role", ""),
-        state.get("extracted_location", ""),
-    )
+    logger.info(f"Extracted skills={state['extracted_skills']} experience_years={state['extracted_experience_years']} experience={state.get('extracted_experience')} email={extracted_email} role={state.get('extracted_role', '')} location={state.get('extracted_location', '')}")
     logger.info("[graph] state.resume_sections after parser: %s", state.get("resume_sections"))
     
     return state

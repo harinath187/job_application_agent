@@ -7,18 +7,10 @@ import os
 import re
 from collections import Counter
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, Any
 
-try:
-    from groq import Groq
-except Exception:  # pragma: no cover - allows heuristic-only execution when SDK is unavailable
-    Groq = None
-
-try:
-    from pypdf import PdfReader
-except Exception:  # pragma: no cover - allows fallback text extraction when pypdf is unavailable
-    PdfReader = None
+from groq import Groq
+from pypdf import PdfReader
 
 from utils.groq_client import GroqCallFailedError, call_groq_with_retry
 
@@ -34,22 +26,9 @@ def get_groq_client() -> Groq:
     """
     Lazily create a Groq client when resume parsing is requested.
     """
-    if Groq is None:
-        raise RuntimeError("Groq SDK is not installed. Resume parsing via Groq is unavailable.")
     if not GROQ_API_KEY:
         raise RuntimeError("GROQ_API_KEY is not set. Resume parsing via Groq is unavailable.")
     return Groq(api_key=GROQ_API_KEY)
-
-
-def _normalize_string_list(values: Any) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    normalized: list[str] = []
-    for value in values:
-        text = str(value).strip()
-        if text and text not in normalized:
-            normalized.append(text)
-    return normalized
 
 
 COMMON_SKILLS = [
@@ -105,9 +84,6 @@ GENERIC_SECTION_HEADINGS = {
     "interests",
 }
 
-PROJECT_SECTION_HINTS = ("project", "portfolio", "selected work", "case study")
-CERTIFICATION_SECTION_HINTS = ("certification", "certificate", "licensure", "licenses", "licenses and certifications")
-
 EDUCATION_HEADER_HINTS = ("education", "academic", "qualification", "qualifications")
 
 
@@ -129,26 +105,13 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     Returns:
         Extracted text as a string.
     """
-    if PdfReader is not None:
-        reader = PdfReader(pdf_path)
-        text = []
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text.append(page_text)
-        return "\n".join(text)
-
-    logger.warning("[pdf_parser] pypdf not installed; using minimal fallback PDF text extraction for %s", pdf_path)
-    raw_bytes = Path(pdf_path).read_bytes()
-    try:
-        raw_text = raw_bytes.decode("latin-1", errors="ignore")
-    except Exception:
-        raw_text = str(raw_bytes)
-    # Best-effort literal string extraction for simple PDFs
-    strings = re.findall(r"\((.*?)\)\s*Tj", raw_text, re.DOTALL)
-    if strings:
-        return "\n".join(s.replace("\\n", "\n").replace("\\(", "(").replace("\\)", ")") for s in strings)
-    return raw_text
+    reader = PdfReader(pdf_path)
+    text = []
+    for page in reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text.append(page_text)
+    return "\n".join(text)
 
 
 def _clean_resume_text(resume_text: str) -> str:
@@ -459,51 +422,6 @@ def _parse_generic_section_entries(section_lines: list[str]) -> list[str]:
     return [item for item in items if item]
 
 
-def _extract_section_items_by_heading(resume_text: str, heading_hints: tuple[str, ...]) -> list[str]:
-    """Extract section items by finding a matching section header and collecting bullet-like entries."""
-    lines = [line.strip() for line in (resume_text or "").splitlines() if line.strip()]
-    collected: list[str] = []
-    capture = False
-    for idx, line in enumerate(lines):
-        normalized = _normalize_header_text(line.rstrip(":"))
-        if any(hint in normalized for hint in heading_hints):
-            capture = True
-            collected = []
-            continue
-        if capture:
-            next_line = lines[idx + 1] if idx + 1 < len(lines) else ""
-            normalized_line = _normalize_header_text(line.rstrip(":"))
-            if (
-                normalized_line in GENERIC_SECTION_HEADINGS
-                or normalized_line in {alias for aliases in SECTION_ALIASES.values() for alias in aliases}
-                or line.strip().endswith(":")
-                or (line.strip() == line.strip().upper() and any(ch.isalpha() for ch in line))
-            ):
-                break
-            if idx > 0 and _is_probable_section_header(line, next_line=next_line, line_index=idx, allow_title_case=False):
-                break
-        if capture:
-            collected.append(line)
-    return _parse_generic_section_entries(collected)
-
-
-def _heuristic_projects_from_text(resume_text: str) -> list[str]:
-    items = _extract_section_items_by_heading(resume_text, PROJECT_SECTION_HINTS)
-    if items:
-        return items
-    lines = [line.strip() for line in (resume_text or "").splitlines() if line.strip()]
-    return [line.lstrip("-•* ").strip() for line in lines if re.search(r"\bproject\b", line, re.IGNORECASE)][:5]
-
-
-def _heuristic_certifications_from_text(resume_text: str) -> list[str]:
-    items = _extract_section_items_by_heading(resume_text, CERTIFICATION_SECTION_HINTS)
-    if items:
-        return items
-    lines = [line.strip() for line in (resume_text or "").splitlines() if line.strip()]
-    hits = [line.lstrip("-•* ").strip() for line in lines if re.search(r"\b(certif|certificate|licensed|licen[sc]e)\b", line, re.IGNORECASE)]
-    return [hit for hit in hits if hit][:5]
-
-
 def _parse_education_entry(block_lines: list[str]) -> Dict[str, Any]:
     entry_text = " | ".join(block_lines)
     degree = ""
@@ -616,17 +534,9 @@ def _heuristic_resume_parse(resume_text: str) -> Dict[str, Any]:
     email = extract_email_from_text(cleaned_resume_text)
     resume_sections = _extract_resume_sections_from_text(cleaned_resume_text, email=email)
     resume_sections["skills"] = skills
-    projects = _heuristic_projects_from_text(cleaned_resume_text)
-    certifications = _heuristic_certifications_from_text(cleaned_resume_text)
-    if projects:
-        resume_sections.setdefault("additional_sections", []).append({"heading": "projects", "items": projects})
-    if certifications:
-        resume_sections.setdefault("additional_sections", []).append({"heading": "certifications", "items": certifications})
 
     return {
         "skills": skills,
-        "projects": projects,
-        "certifications": certifications,
         "experience_years": experience_years,
         "experience": _format_experience_summary(experience_years) if experience_years else None,
         "email": email,
@@ -686,8 +596,6 @@ def _build_resume_extraction_prompt(resume_text_for_parsing: str) -> str:
     """Build the Groq prompt used for resume extraction."""
     return f"""Analyze this resume and extract ONLY the following information in valid JSON format:
 - skills: list of 5-8 key technical or professional skills mentioned.
-- projects: list of project names or project summaries explicitly mentioned in the resume.
-- certifications: list of certifications, licenses, or credentials explicitly mentioned.
 - experience_years: total years of professional work experience (integer). If they are a student with no work experience, return 0.
 - experience: a short bucket such as Entry level, 1-3 years, 3-5 years, or 5+ years.
 - resume_sections: an object with contact_info, summary, skills, experience, education, and additional_sections.
@@ -704,44 +612,6 @@ Resume text:
 {resume_text_for_parsing}
 
 Return ONLY valid JSON with no additional text."""
-
-
-def _normalize_parsed_resume_payload(extracted_data: Dict[str, Any], resume_text_for_parsing: str) -> Dict[str, Any]:
-    """Normalize Groq output and fill missing fields with heuristic extraction."""
-    fallback_sections = _extract_resume_sections_from_text(resume_text_for_parsing, email=extract_email_from_text(resume_text_for_parsing))
-    skills = _normalize_string_list(extracted_data.get("skills", []))
-    projects = _normalize_string_list(extracted_data.get("projects", []))
-    certifications = _normalize_string_list(extracted_data.get("certifications", []))
-
-    if not skills:
-        skills = _heuristic_resume_parse(resume_text_for_parsing).get("skills", [])
-    if not projects:
-        projects = _heuristic_projects_from_text(resume_text_for_parsing)
-    if not certifications:
-        certifications = _heuristic_certifications_from_text(resume_text_for_parsing)
-
-    resume_sections = extracted_data.get("resume_sections")
-    if not isinstance(resume_sections, dict):
-        resume_sections = fallback_sections
-
-    resume_sections.setdefault("contact_info", fallback_sections.get("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []}))
-    resume_sections.setdefault("summary", "")
-    resume_sections.setdefault("skills", skills)
-    resume_sections.setdefault("experience", fallback_sections.get("experience", []))
-    resume_sections.setdefault("education", fallback_sections.get("education", []))
-    resume_sections.setdefault("additional_sections", fallback_sections.get("additional_sections", []))
-
-    if projects:
-        resume_sections["additional_sections"].append({"heading": "projects", "items": projects})
-    if certifications:
-        resume_sections["additional_sections"].append({"heading": "certifications", "items": certifications})
-
-    return {
-        "skills": skills,
-        "projects": projects,
-        "certifications": certifications,
-        "resume_sections": resume_sections,
-    }
 
 
 def parse_resume(pdf_path: str) -> Dict[str, Any]:
@@ -764,8 +634,6 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
             logger.warning(f"No text extracted from {pdf_path}")
             return {
                 "skills": [],
-                "projects": [],
-                "certifications": [],
                 "experience_years": 0,
                 "experience": None,
                 "email": None,
@@ -782,7 +650,10 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
 
         try:
             client = get_groq_client()
+            message = None
             response_text = ""
+            json_error = None
+            groq_call_succeeded = False
             try:
                 message = call_groq_with_retry(
                     client,
@@ -795,12 +666,17 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                         }
                     ]
                 )
+                groq_call_succeeded = True
                 response_text = message.choices[0].message.content.strip()
             except Exception as groq_exc:
-                logger.warning("[pdf_parser] Groq call failed for %s, falling back to heuristics only: %s", pdf_path, groq_exc)
-                return _heuristic_resume_parse(resume_text_for_parsing)
+                logger.exception("[pdf_parser] Groq call failed for %s", pdf_path)
+                raise
 
-            logger.info("[pdf_parser] Groq raw_response=%r", response_text)
+            logger.info(
+                "[pdf_parser] Groq call succeeded=%s raw_response=%r",
+                groq_call_succeeded,
+                response_text,
+            )
             if not response_text:
                 logger.warning("Groq returned empty response; falling back to heuristic parsing")
                 return _heuristic_resume_parse(resume_text_for_parsing)
@@ -809,15 +685,27 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 extracted_data = json.loads(response_text)
                 logger.info("[pdf_parser] json.loads succeeded for %s", pdf_path)
             except json.JSONDecodeError as exc:
-                logger.warning("Groq response was not valid JSON for %s: %s; falling back to heuristic parsing", pdf_path, exc)
+                json_error = exc
+                logger.exception("[pdf_parser] json.loads failed for %s", pdf_path)
+                logger.warning(
+                    f"Groq response was not valid JSON ({exc}); falling back to heuristic parsing. "
+                    f"Response text: {response_text!r}"
+                )
                 return _heuristic_resume_parse(resume_text_for_parsing)
 
             if not isinstance(extracted_data, dict):
-                logger.warning("Groq JSON response was not a dict for %s; falling back to heuristic parsing", pdf_path)
+                logger.warning(
+                    f"Groq JSON response was not a dict (type={type(extracted_data).__name__}); falling back to heuristic parsing. "
+                    f"Response text: {response_text!r}"
+                )
                 return _heuristic_resume_parse(resume_text_for_parsing)
 
-            if not isinstance(extracted_data.get("skills", []), list):
-                logger.warning("Groq JSON response skills field is not a list for %s; falling back to heuristic parsing", pdf_path)
+            skills = extracted_data.get("skills", [])
+            if not isinstance(skills, list):
+                logger.warning(
+                    f"Groq JSON response skills field is not a list (type={type(skills).__name__}); falling back to heuristic parsing. "
+                    f"Response text: {response_text!r}"
+                )
                 return _heuristic_resume_parse(resume_text_for_parsing)
 
             experience_years = extracted_data.get("experience_years", 0)
@@ -833,19 +721,35 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                     experience_years = inferred_years
                 extracted_experience = inferred_experience or _format_experience_summary(experience_years)
 
-            normalized_payload = _normalize_parsed_resume_payload(extracted_data, resume_text_for_parsing)
-            skills = normalized_payload["skills"]
-            projects = normalized_payload["projects"]
-            certifications = normalized_payload["certifications"]
-            resume_sections = normalized_payload["resume_sections"]
+            resume_sections = extracted_data.get("resume_sections")
+            fallback_sections = _extract_resume_sections_from_text(resume_text_for_parsing, email=extract_email_from_text(resume_text_for_parsing))
+            if not isinstance(resume_sections, dict):
+                resume_sections = fallback_sections
+            else:
+                resume_sections.setdefault("contact_info", fallback_sections.get("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []}))
+                resume_sections.setdefault("summary", "")
+                resume_sections.setdefault("skills", skills)
+                if not (resume_sections.get("experience") or []):
+                    resume_sections["experience"] = fallback_sections.get("experience", [])
+                if not (resume_sections.get("education") or []):
+                    resume_sections["education"] = fallback_sections.get("education", [])
+                if not (resume_sections.get("additional_sections") or []):
+                    resume_sections["additional_sections"] = fallback_sections.get("additional_sections", [])
+                if not (resume_sections.get("contact_info") or {}).get("name"):
+                    resume_sections["contact_info"] = fallback_sections.get("contact_info", resume_sections.get("contact_info", {}))
+
+            resume_sections.setdefault("contact_info", {"name": "", "email": extract_email_from_text(resume_text_for_parsing), "phone": "", "links": []})
+            resume_sections.setdefault("summary", "")
+            resume_sections.setdefault("skills", skills)
+            resume_sections.setdefault("experience", [])
+            resume_sections.setdefault("education", [])
+            resume_sections.setdefault("additional_sections", [])
 
             logger.info(
-                "[pdf_parser] parsed resume_sections keys=%s summary=%r skills=%s projects=%s certifications=%s experience_len=%d education_len=%d additional_sections_len=%d contact_name=%r",
+                "[pdf_parser] parsed resume_sections keys=%s summary=%r skills=%s experience_len=%d education_len=%d additional_sections_len=%d contact_name=%r",
                 sorted(resume_sections.keys()),
                 resume_sections.get("summary"),
                 resume_sections.get("skills"),
-                projects,
-                certifications,
                 len(resume_sections.get("experience") or []),
                 len(resume_sections.get("education") or []),
                 len(resume_sections.get("additional_sections") or []),
@@ -855,8 +759,6 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
 
             return {
                 "skills": skills,
-                "projects": projects,
-                "certifications": certifications,
                 "experience_years": experience_years,
                 "experience": extracted_experience,
                 "email": extract_email_from_text(resume_text_for_parsing),
@@ -877,8 +779,6 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
         logger.exception("[pdf_parser] parse_resume failed for %s", pdf_path)
         return {
             "skills": [],
-            "projects": [],
-            "certifications": [],
             "experience_years": 0,
             "experience": None,
             "email": None,
