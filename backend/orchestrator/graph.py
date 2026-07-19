@@ -129,8 +129,8 @@ def resume_from_scraper_node(session_id: str, experience_level: str) -> AgentSta
         "session_id": session_id,
         "resume_path": history.get("resume_path", ""),
         "resume_text": parsed_data.get("resume_text", ""),
-        "extracted_role": history.get("role", ""),
-        "extracted_location": history.get("location", ""),
+        "extracted_role": history.get("role") or None,
+        "extracted_location": history.get("location") or None,
         "user_experience": session_data.get("experience"),
         "extracted_email": parsed_data.get("email"),
         "alerts_enabled": False,
@@ -157,8 +157,8 @@ def auto_alert_registration_node(state: AgentState) -> AgentState:
     """
     session_id = state.get("session_id")
     email = state.get("extracted_email")
-    role = state.get("extracted_role", "")
-    location = state.get("extracted_location", "")
+    role = state.get("extracted_role") or ""
+    location = state.get("extracted_location") or ""
 
     if state.get("experience_level") is None:
         if session_id:
@@ -204,8 +204,8 @@ def scraper_node(state: AgentState) -> AgentState:
     Returns:
         Updated state with scraped jobs and their database IDs
     """
-    role = state.get("extracted_role", "Software Engineer")
-    location = state.get("extracted_location", "USA")
+    role = state.get("extracted_role") or ""
+    location = state.get("extracted_location") or ""
 
     logger.info(f"Scraping jobs for: {role} in {location}")
 

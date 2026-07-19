@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["upload"])
 
 
-def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str, experience: str | None) -> None:
+def run_agent_pipeline(session_id: str, pdf_path: str, role: str | None, location: str | None, experience: str | None) -> None:
     """
     Background task that runs the LangGraph agent pipeline.
     Jobs are inserted and updated in the database incrementally as they are processed.
@@ -26,8 +26,8 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str,
     Args:
         session_id: Session ID for tracking
         pdf_path: Path to the uploaded resume PDF
-        role: Job title / role provided by the user
-        location: Location provided by the user
+        role: Optional job title / role override provided by the user
+        location: Optional location override provided by the user
         experience: Optional experience string provided by the user
     """
     try:
@@ -76,8 +76,8 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str, location: str,
 async def upload_resume(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    role: str = Form(...),
-    location: str = Form(...),
+    role: str | None = Form(None),
+    location: str | None = Form(None),
     experience: str | None = Form(None)
 ) -> JSONResponse:
     """
@@ -86,8 +86,8 @@ async def upload_resume(
     Args:
         file: Uploaded PDF file
         background_tasks: FastAPI background tasks
-        role: Role provided by the user
-        location: Location provided by the user
+        role: Optional role override provided by the user
+        location: Optional location override provided by the user
         experience: Optional experience provided by the user
     
     Returns:

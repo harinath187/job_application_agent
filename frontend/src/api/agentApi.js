@@ -14,8 +14,12 @@ async function uploadResume(file, role, location, experience = '') {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    formData.append('role', role)
-    formData.append('location', location)
+    if (role && role.trim()) {
+      formData.append('role', role.trim())
+    }
+    if (location && location.trim()) {
+      formData.append('location', location.trim())
+    }
     if (experience && experience.trim()) {
       formData.append('experience', experience.trim())
     }

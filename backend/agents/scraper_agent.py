@@ -51,14 +51,14 @@ def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
 
 def _build_role_search_list(state: dict[str, Any]) -> list[str]:
     inferred_roles = []
+    extracted_role = (state.get("extracted_role") or "").strip()
+    if extracted_role and extracted_role.lower() not in {item.lower() for item in inferred_roles}:
+        inferred_roles.append(extracted_role)
+
     for role in (state.get("inferred_roles") or [])[:3]:
         normalized = (role or "").strip()
         if normalized and normalized.lower() not in {item.lower() for item in inferred_roles}:
             inferred_roles.append(normalized)
-
-    extracted_role = (state.get("extracted_role") or "").strip()
-    if extracted_role and extracted_role.lower() not in {item.lower() for item in inferred_roles}:
-        inferred_roles.append(extracted_role)
 
     return inferred_roles
 

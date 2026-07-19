@@ -270,6 +270,8 @@ def insert_search_history(session_id: str, resume_name: str, resume_path: str, r
     with get_db_connection() as conn:
         cursor = conn.cursor()
         created_at = datetime.utcnow().isoformat()
+        normalized_role = role or ""
+        normalized_location = location or ""
         cursor.execute(
             """INSERT INTO search_history
                (session_id, resume_name, resume_path, role, location, created_at)
@@ -279,7 +281,7 @@ def insert_search_history(session_id: str, resume_name: str, resume_path: str, r
                    resume_path = excluded.resume_path,
                    role = excluded.role,
                    location = excluded.location""",
-            (session_id, resume_name, resume_path, role, location, created_at)
+            (session_id, resume_name, resume_path, normalized_role, normalized_location, created_at)
         )
         cursor.execute(
             "UPDATE sessions SET experience = ? WHERE session_id = ?",

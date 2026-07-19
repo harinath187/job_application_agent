@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X } from 'lucide-react'
 import { UploadBox } from '../components/dashboard/UploadBox.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
@@ -19,6 +18,7 @@ export function Home() {
   const [role, setRole] = useState('')
   const [location, setLocation] = useState('')
   const [experience, setExperience] = useState('')
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [error, setError] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [uploadKey, setUploadKey] = useState(0)
@@ -49,8 +49,8 @@ export function Home() {
   }
 
   const handleRun = async () => {
-    if (!selectedFile || !role.trim() || !location.trim()) {
-      setError('Please upload a resume and enter both role and location.')
+    if (!selectedFile) {
+      setError('Please upload a resume before running the agent.')
       return
     }
 
@@ -86,7 +86,17 @@ export function Home() {
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Ready to start?</h2>
             <p className="mt-2 text-sm text-slate-700 dark:text-gray-400">Upload a PDF resume and begin the intelligent job search pipeline.</p>
             <div className="mt-6 space-y-6">
-              <UploadBox key={uploadKey} onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+              <UploadBox
+                key={uploadKey}
+                onFileSelect={handleFileSelect}
+                isProcessing={isProcessing}
+                role={role}
+                location={location}
+                onRoleChange={setRole}
+                onLocationChange={setLocation}
+                advancedOpen={advancedOpen}
+                onToggleAdvanced={() => setAdvancedOpen((current) => !current)}
+              />
 
               {selectedFile && (
                 <div className="flex items-center gap-3 rounded-2xl border border-gray-800 bg-gray-950/60 px-4 py-3 text-sm text-slate-600 dark:text-gray-300 dark:bg-gray-950/60 dark:border-gray-800">
@@ -102,38 +112,10 @@ export function Home() {
                     aria-label="Remove selected resume"
                     title="Remove selected resume"
                   >
-                    <X size={16} />
+                    Remove
                   </button>
                 </div>
               )}
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-left text-sm font-medium text-slate-700 dark:text-gray-300">
-                  Job Title / Role
-                  <input
-                    type="text"
-                    value={role}
-                    onChange={(event) => setRole(event.target.value)}
-                    required
-                    className="mt-2 w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                    placeholder="e.g. Product Manager"
-                    disabled={isProcessing}
-                  />
-                  </label>
-
-                <label className="block text-left text-sm font-medium text-slate-700 dark:text-gray-300">
-                  Location
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(event) => setLocation(event.target.value)}
-                    required
-                    className="mt-2 w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:text-white"
-                    placeholder="e.g. New York, NY"
-                    disabled={isProcessing}
-                  />
-                </label>
-              </div>
 
               <label className="block text-left text-sm font-medium text-slate-700 dark:text-gray-300">
                 Experience (optional)
@@ -148,11 +130,11 @@ export function Home() {
                   </option>
                   {EXPERIENCE_OPTIONS.map((option) => (
                     <option
-                      key={option}
-                      value={option}
+                      key={option.value}
+                      value={option.value}
                       className="bg-white text-slate-900 dark:bg-gray-950 dark:text-white"
                     >
-                      {option}
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -164,7 +146,7 @@ export function Home() {
               <div className="flex justify-center">
                 <Button
                   onClick={handleRun}
-                  disabled={!selectedFile || !role.trim() || !location.trim() || isProcessing}
+                  disabled={!selectedFile || isProcessing}
                 >
                   {isProcessing ? 'Running...' : 'Run'}
                 </Button>
