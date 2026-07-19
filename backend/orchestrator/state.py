@@ -27,3 +27,4 @@ class AgentState(TypedDict):
     jobs: List[dict]  # List of scraped jobs; each job may include source_city/source_role as str or list[str] and role_confidence as float
     tailored_resumes: List[dict]  # List of tailored resume data and file paths
     cover_letter_paths: List[str]  # List of generated cover letter file paths
+    validation_stats: dict  # Validation summary counts for job filtering

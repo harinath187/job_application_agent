@@ -12,6 +12,7 @@ from utils.db import (
     get_job_by_id,
     get_jobs_by_session,
     get_search_history,
+    get_session_data,
     get_session_alert_status,
     get_session_status,
 )
@@ -87,6 +88,7 @@ async def search_history_item(session_id: str) -> JSONResponse:
         jobs = get_jobs_by_session(session_id)
         session_status = get_session_status(session_id)
         alert_status = get_session_alert_status(session_id)
+        session_data = get_session_data(session_id) or {}
         return JSONResponse(
             status_code=200,
         content={
@@ -95,6 +97,7 @@ async def search_history_item(session_id: str) -> JSONResponse:
                 "session_id": session_id,
                 "status": session_status,
                 "session_status": session_status,
+                "validation_stats": session_data.get("validation_stats", {}),
                 **alert_status
             }
         )
@@ -120,6 +123,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
         jobs = get_jobs_by_session(session_id)
         session_status = get_session_status(session_id)
         alert_status = get_session_alert_status(session_id)
+        session_data = get_session_data(session_id) or {}
         
         # Determine overall status message
         status_message = "Processing..."
@@ -149,6 +153,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                     "count": 0,
                     "status": status_message,
                     "session_status": session_status,
+                    "validation_stats": session_data.get("validation_stats", {}),
                     **alert_status
                 }
             )
@@ -167,6 +172,10 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "source_city": job.get("source_city"),
                 "source_role": job.get("source_role"),
                 "role_confidence": job.get("role_confidence", 0.0),
+                "relevance_score": job.get("relevance_score", 0.0),
+                "final_score": job.get("final_score", 0.0),
+                "experience_match_score": job.get("experience_match_score", 0.0),
+                "seniority_bucket": job.get("seniority_bucket"),
                 "resume_path": job.get("resume_path"),
                 "cover_letter_path": job.get("cover_letter_path"),
                 "status": job.get("status", "pending")
@@ -182,6 +191,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "count": len(job_list),
                 "status": status_message,
                 "session_status": session_status,
+                "validation_stats": session_data.get("validation_stats", {}),
                 **alert_status
             }
         )
@@ -221,6 +231,10 @@ async def get_job_detail(job_id: int) -> JSONResponse:
                     "source_city": job.get("source_city"),
                     "source_role": job.get("source_role"),
                     "role_confidence": job.get("role_confidence", 0.0),
+                    "relevance_score": job.get("relevance_score", 0.0),
+                    "final_score": job.get("final_score", 0.0),
+                    "experience_match_score": job.get("experience_match_score", 0.0),
+                    "seniority_bucket": job.get("seniority_bucket"),
                     "resume_path": job.get("resume_path"),
                     "cover_letter_path": job.get("cover_letter_path"),
                     "status": job.get("status", "pending")

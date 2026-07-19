@@ -37,6 +37,7 @@ def init_db() -> None:
                 projects TEXT,
                 certifications TEXT,
                 inferred_roles TEXT,
+                validation_stats TEXT,
                 parsed_resume_data TEXT,
                 created_at TEXT NOT NULL
             )
@@ -51,6 +52,11 @@ def init_db() -> None:
                     cursor.execute(f"ALTER TABLE sessions ADD COLUMN {column} TEXT")
                 except Exception:
                     pass
+        if "validation_stats" not in session_columns:
+            try:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN validation_stats TEXT")
+            except Exception:
+                pass
         if "parsed_resume_data" not in session_columns:
             try:
                 cursor.execute("ALTER TABLE sessions ADD COLUMN parsed_resume_data TEXT")
@@ -83,6 +89,10 @@ def init_db() -> None:
                 source_city TEXT,
                 source_role TEXT,
                 role_confidence REAL,
+                relevance_score REAL,
+                final_score REAL,
+                experience_match_score REAL,
+                seniority_bucket TEXT,
                 resume_path TEXT,
                 cover_letter_path TEXT,
                 status TEXT NOT NULL,
@@ -107,6 +117,17 @@ def init_db() -> None:
                 cursor.execute("ALTER TABLE jobs ADD COLUMN role_confidence REAL")
             except Exception:
                 pass
+        for column, ddl in (
+            ("relevance_score", "ALTER TABLE jobs ADD COLUMN relevance_score REAL"),
+            ("final_score", "ALTER TABLE jobs ADD COLUMN final_score REAL"),
+            ("experience_match_score", "ALTER TABLE jobs ADD COLUMN experience_match_score REAL"),
+            ("seniority_bucket", "ALTER TABLE jobs ADD COLUMN seniority_bucket TEXT"),
+        ):
+            if column not in job_columns:
+                try:
+                    cursor.execute(ddl)
+                except Exception:
+                    pass
 
         # Create alert users table
         cursor.execute("""
@@ -238,8 +259,8 @@ def insert_session(session_id: str, status: str) -> None:
         cursor = conn.cursor()
         created_at = datetime.utcnow().isoformat()
         cursor.execute(
-            "INSERT INTO sessions (session_id, status, projects, certifications, inferred_roles, parsed_resume_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (session_id, status, _json_encode_list([]), _json_encode_list([]), _json_encode_list([]), _json_encode({}), created_at)
+            "INSERT INTO sessions (session_id, status, projects, certifications, inferred_roles, validation_stats, parsed_resume_data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_id, status, _json_encode_list([]), _json_encode_list([]), _json_encode_list([]), _json_encode({}), _json_encode({}), created_at)
         )
         conn.commit()
 
@@ -283,8 +304,8 @@ def insert_job(session_id: str, job: Dict[str, Any]) -> int:
         created_at = datetime.utcnow().isoformat()
         cursor.execute(
             """INSERT INTO jobs 
-               (session_id, title, company, location, job_url, description, source_city, source_role, role_confidence, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (session_id, title, company, location, job_url, description, source_city, source_role, role_confidence, relevance_score, final_score, experience_match_score, seniority_bucket, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session_id,
                 job.get("title", ""),
@@ -295,6 +316,10 @@ def insert_job(session_id: str, job: Dict[str, Any]) -> int:
                 _json_encode(job.get("source_city") if isinstance(job.get("source_city"), list) else ([job.get("source_city")] if job.get("source_city") else [])),
                 _json_encode(job.get("source_role") if isinstance(job.get("source_role"), list) else ([job.get("source_role")] if job.get("source_role") else [])),
                 float(job.get("role_confidence")) if job.get("role_confidence") is not None else None,
+                float(job.get("relevance_score")) if job.get("relevance_score") is not None else None,
+                float(job.get("final_score")) if job.get("final_score") is not None else None,
+                float(job.get("experience_match_score")) if job.get("experience_match_score") is not None else None,
+                job.get("seniority_bucket"),
                 "pending",
                 created_at
             )
@@ -315,7 +340,7 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM jobs WHERE session_id = ? ORDER BY created_at DESC", (session_id,))
+        cursor.execute("SELECT * FROM jobs WHERE session_id = ? ORDER BY COALESCE(final_score, 0) DESC, created_at DESC", (session_id,))
         rows = cursor.fetchall()
         jobs = []
         for row in rows:
@@ -324,6 +349,9 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
             job["source_role"] = _json_decode(job.get("source_role")) or []
             role_confidence = job.get("role_confidence")
             job["role_confidence"] = float(role_confidence) if role_confidence is not None else 0.0
+            for key in ("relevance_score", "final_score", "experience_match_score"):
+                value = job.get(key)
+                job[key] = float(value) if value is not None else 0.0
             jobs.append(job)
         return jobs
 
@@ -399,6 +427,9 @@ def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
         job["source_role"] = _json_decode(job.get("source_role")) or []
         role_confidence = job.get("role_confidence")
         job["role_confidence"] = float(role_confidence) if role_confidence is not None else 0.0
+        for key in ("relevance_score", "final_score", "experience_match_score"):
+            value = job.get(key)
+            job[key] = float(value) if value is not None else 0.0
         return job
 
 
@@ -464,6 +495,17 @@ def update_session_profile_data(
         conn.commit()
 
 
+def update_session_validation_stats(session_id: str, validation_stats: Dict[str, Any]) -> None:
+    """Persist validation counts for a session."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE sessions SET validation_stats = ? WHERE session_id = ?",
+            (_json_encode(validation_stats), session_id),
+        )
+        conn.commit()
+
+
 def update_session_parsed_resume_data(session_id: str, parsed_data: Dict[str, Any]) -> None:
     """Persist the parsed resume payload so the pipeline can resume without reparsing."""
     with get_db_connection() as conn:
@@ -480,7 +522,15 @@ def get_session_data(session_id: str) -> Dict[str, Any] | None:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        data = dict(row)
+        data["projects"] = _json_decode(data.get("projects")) or []
+        data["certifications"] = _json_decode(data.get("certifications")) or []
+        data["inferred_roles"] = _json_decode(data.get("inferred_roles")) or []
+        data["validation_stats"] = _json_decode(data.get("validation_stats")) or {}
+        data["parsed_resume_data"] = _json_decode(data.get("parsed_resume_data")) or {}
+        return data
 
 
 def update_session_experience(session_id: str, experience: str | None) -> None:

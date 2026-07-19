@@ -3,11 +3,13 @@ LangGraph orchestrator that coordinates all agents in the job application pipeli
 """
 import logging
 import time  # FIXED: Add delay support for Groq rate limit protection.
+import os
 from langgraph.graph import StateGraph, END
 from orchestrator.state import AgentState
 from agents.pdf_parser import parse_resume, get_resume_text, extract_email_from_text
 from agents.role_inferrer import infer_roles
-from agents.relevance_scorer import compute_role_confidence
+from agents.job_validator import validate_jobs
+from agents.relevance_scorer import compute_final_score, compute_role_confidence
 from agents.scraper_agent import run_scraper_agent
 from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
@@ -18,6 +20,7 @@ from utils.db import (
     get_search_history,
     set_session_status,
     update_session_parsed_resume_data,
+    update_session_validation_stats,
     update_job_status,
     upsert_alert_preference_for_user,
     upsert_alert_user,
@@ -29,6 +32,7 @@ from utils.groq_client import GroqCallFailedError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+FINAL_JOB_LIMIT = int(os.getenv("FINAL_JOB_LIMIT", "10"))
 
 
 def pdf_parser_node(state: AgentState) -> AgentState:
@@ -204,21 +208,31 @@ def scraper_node(state: AgentState) -> AgentState:
 
     jobs_state = run_scraper_agent(state)
     jobs = jobs_state.get("jobs", [])
+    jobs, validation_stats = validate_jobs(jobs, state.get("experience_level"))
+    state["validation_stats"] = validation_stats
     projects = state.get("projects", [])
     certifications = state.get("certifications", [])
+    session_id = state.get("session_id")
+    if session_id:
+        update_session_validation_stats(session_id, validation_stats)
 
+    scored_jobs = []
     for job in jobs:
         job["role_confidence"] = compute_role_confidence(job, projects, certifications)
-    
-    logger.info(f"Found {len(jobs)} jobs")
+        scores = compute_final_score(job, projects, certifications, state.get("experience_level"))
+        job.update(scores)
+        scored_jobs.append(job)
+
+    scored_jobs.sort(key=lambda item: item.get("final_score", 0.0), reverse=True)
+    final_jobs = scored_jobs[:FINAL_JOB_LIMIT]
+    logger.info("Found %s validated jobs, keeping top %s by final_score", len(scored_jobs), len(final_jobs))
     
     # Insert each job into database with pending status for incremental display
-    session_id = state.get("session_id")
-    for job in jobs:
+    for job in final_jobs:
         job_id = insert_job(session_id, job)
         job["id"] = job_id  # Add the database ID to the job
     
-    state["jobs"] = jobs
+    state["jobs"] = final_jobs
 
     return state
 

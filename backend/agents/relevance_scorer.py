@@ -1,6 +1,9 @@
 """
 Heuristic relevance scoring for job-role fit.
 """
+from __future__ import annotations
+
+import os
 import re
 from typing import Iterable
 
@@ -24,8 +27,12 @@ _PHRASE_PATTERNS = (
 )
 
 
-def _normalize_text(value: str | None) -> str:
-    return re.sub(r"\s+", " ", (value or "").lower()).strip()
+_SENIORITY_BUCKETS = ("fresher", "1-2", "3-5", "5+", "unspecified")
+
+
+def _normalize_text(*values: str | None) -> str:
+    text = " ".join(value for value in values if value)
+    return re.sub(r"\s+", " ", text.lower()).strip()
 
 
 def _tokenize(text: str | None) -> set[str]:
@@ -34,6 +41,58 @@ def _tokenize(text: str | None) -> set[str]:
 
 def _collect_text(items: Iterable[str] | None) -> str:
     return " ".join(item for item in (items or []) if item)
+
+
+def classify_job_seniority(job: dict) -> str:
+    """
+    Infer a coarse seniority bucket from title + description.
+    """
+    text = _normalize_text(job.get("title"), job.get("description"))
+    if not text:
+        return "unspecified"
+
+    patterns = [
+        ("fresher", (
+            r"\bfresher\b",
+            r"\bnew grad\b",
+            r"\bentry level\b",
+            r"\bentry-level\b",
+            r"\bintern\b",
+            r"\binternship\b",
+            r"\b0\s*[-to]+\s*1\s*years?\b",
+            r"\b0\s*[-to]+\s*2\s*years?\b",
+        )),
+        ("1-2", (
+            r"\b1\s*[-to]+\s*2\s*years?\b",
+            r"\b1\s*\+\s*years?\b",
+            r"\b2\s*years?\b",
+            r"\bjunior\b",
+            r"\bassociate\b",
+        )),
+        ("3-5", (
+            r"\b3\s*[-to]+\s*5\s*years?\b",
+            r"\bmid[-\s]?level\b",
+            r"\bintermediate\b",
+            r"\b3\s*\+\s*years?\b",
+            r"\b4\s*\+\s*years?\b",
+        )),
+        ("5+", (
+            r"\b5\s*\+\s*years?\b",
+            r"\b6\s*\+\s*years?\b",
+            r"\b7\s*\+\s*years?\b",
+            r"\bsenior\b",
+            r"\blead\b",
+            r"\bstaff\b",
+            r"\bprincipal\b",
+            r"\bmanager\b",
+            r"\barchitect\b",
+        )),
+    ]
+
+    for bucket, patterns_for_bucket in patterns:
+        if any(re.search(pattern, text) for pattern in patterns_for_bucket):
+            return bucket
+    return "unspecified"
 
 
 def compute_role_confidence(job: dict, projects: list[str], certifications: list[str]) -> float:
@@ -70,3 +129,57 @@ def compute_role_confidence(job: dict, projects: list[str], certifications: list
 
     score = (token_overlap * 0.65) + (min(phrase_overlap, 3.0) * 0.1) + min(certification_bonus, 0.25)
     return max(0.0, min(1.0, score))
+
+
+def _normalize_experience_level(experience_level: str | None) -> str:
+    normalized = _normalize_text(experience_level)
+    aliases = {
+        "fresher": "fresher",
+        "entry": "fresher",
+        "entry level": "fresher",
+        "entry-level": "fresher",
+        "0": "fresher",
+        "0-1": "fresher",
+        "1-2": "1-2",
+        "1 to 2": "1-2",
+        "3-5": "3-5",
+        "3 to 5": "3-5",
+        "5+": "5+",
+        "5 plus": "5+",
+    }
+    return aliases.get(normalized, normalized if normalized in _SENIORITY_BUCKETS else "unspecified")
+
+
+def compute_final_score(
+    job: dict,
+    projects: list[str],
+    certifications: list[str],
+    experience_level: str | None,
+) -> dict:
+    """
+    Combine relevance, role confidence, and experience fit into a final 0-100 score.
+    """
+    relevance_score = compute_role_confidence(job, projects, certifications)
+    role_confidence = float(job.get("role_confidence") or compute_role_confidence(job, projects, certifications) or 0.0)
+    job_bucket = classify_job_seniority(job)
+    candidate_bucket = _normalize_experience_level(experience_level)
+
+    if job_bucket == "unspecified" or candidate_bucket == "unspecified":
+        experience_match_score = 0.5 if job_bucket == "unspecified" else 0.0
+    else:
+        experience_match_score = 1.0 if job_bucket == candidate_bucket else 0.0
+
+    final_score = (
+        (relevance_score * 55.0) +
+        (role_confidence * 30.0) +
+        (experience_match_score * 15.0)
+    )
+    final_score = max(0.0, min(100.0, final_score))
+    return {
+        "final_score": round(final_score, 2),
+        "relevance_score": round(relevance_score * 100.0, 2),
+        "role_confidence_score": round(role_confidence * 100.0, 2),
+        "experience_match_score": round(experience_match_score * 100.0, 2),
+        "seniority_bucket": job_bucket,
+        "candidate_experience_bucket": candidate_bucket,
+    }
