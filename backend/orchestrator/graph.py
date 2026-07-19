@@ -7,7 +7,8 @@ from langgraph.graph import StateGraph, END
 from orchestrator.state import AgentState
 from agents.pdf_parser import parse_resume, get_resume_text, extract_email_from_text
 from agents.role_inferrer import infer_roles
-from agents.scraper_agent import scrape_jobs
+from agents.relevance_scorer import compute_role_confidence
+from agents.scraper_agent import run_scraper_agent
 from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
 from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
@@ -198,12 +199,16 @@ def scraper_node(state: AgentState) -> AgentState:
     """
     role = state.get("extracted_role", "Software Engineer")
     location = state.get("extracted_location", "USA")
-    
+
     logger.info(f"Scraping jobs for: {role} in {location}")
-    
-    experience_years = state.get("extracted_experience_years", 0)
-    experience = state.get("user_experience") or state.get("extracted_experience")
-    jobs = scrape_jobs(role=role, location=location, candidate_experience_years=experience_years, experience=experience)
+
+    jobs_state = run_scraper_agent(state)
+    jobs = jobs_state.get("jobs", [])
+    projects = state.get("projects", [])
+    certifications = state.get("certifications", [])
+
+    for job in jobs:
+        job["role_confidence"] = compute_role_confidence(job, projects, certifications)
     
     logger.info(f"Found {len(jobs)} jobs")
     
@@ -214,7 +219,7 @@ def scraper_node(state: AgentState) -> AgentState:
         job["id"] = job_id  # Add the database ID to the job
     
     state["jobs"] = jobs
-    
+
     return state
 
 

@@ -7,6 +7,7 @@ import os
 import re
 import time
 import random
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import requests
@@ -21,21 +22,99 @@ SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 SERPAPI_URL = "https://serpapi.com/search"
 MAX_POOL_SIZE = 50
 MAX_RESULTS = 10
+MAX_JOBS = 30
+DEFAULT_METRO_CITIES = ["Delhi", "Bangalore", "Chennai", "Hyderabad", "Noida"]
 MIN_DESCRIPTION_LENGTH = 200
 REQUEST_DELAY = 1.5
 
 
 def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
-    role = state.get("extracted_role", "").strip()
+    inferred_roles = _build_role_search_list(state)
     location = state.get("extracted_location", "").strip()
     experience_years = state.get("extracted_experience_years", 0)
     experience = state.get("user_experience") or state.get("extracted_experience")
-    if not role:
+    if not inferred_roles:
         return {**state, "jobs": []}
 
-    jobs = _fetch_jobs(_build_query(role, location, experience), wanted=MAX_RESULTS, candidate_experience_years=experience_years)
-    logger.info("Fetched %s jobs for %s in %s", len(jobs), role, location)
+    collected: list[dict] = []
+    for role in inferred_roles:
+        try:
+            role_jobs = _search_jobs(role, location, experience, experience_years)
+            collected.extend(role_jobs)
+            logger.info("Fetched %s jobs for %s in %s", len(role_jobs), role, location)
+        except Exception as exc:
+            logger.exception("Role search failed for %s: %s", role, exc)
+
+    jobs = _merge_and_dedupe_jobs(collected, max_jobs=MAX_JOBS)
     return {**state, "jobs": jobs}
+
+
+def _build_role_search_list(state: dict[str, Any]) -> list[str]:
+    inferred_roles = []
+    for role in (state.get("inferred_roles") or [])[:3]:
+        normalized = (role or "").strip()
+        if normalized and normalized.lower() not in {item.lower() for item in inferred_roles}:
+            inferred_roles.append(normalized)
+
+    extracted_role = (state.get("extracted_role") or "").strip()
+    if extracted_role and extracted_role.lower() not in {item.lower() for item in inferred_roles}:
+        inferred_roles.append(extracted_role)
+
+    return inferred_roles
+
+
+def search_jobs_for_city(role: str, city: str, experience_level: str | None = None) -> list[dict]:
+    """Search jobs for one city, preserving existing scraper behavior."""
+    try:
+        experience_years = _experience_level_to_years(experience_level)
+        jobs = scrape_jobs(
+            role=role,
+            location=city,
+            candidate_experience_years=experience_years,
+            experience=experience_level,
+        )
+        for job in jobs:
+            job["source_city"] = city
+        return jobs
+    except Exception as exc:
+        logger.exception("Job search failed for city %s: %s", city, exc)
+        return []
+
+
+def _experience_level_to_years(experience_level: str | None) -> int:
+    normalized = (experience_level or "").strip().lower()
+    if not normalized:
+        return 999
+    if "entry" in normalized or "fresher" in normalized or "intern" in normalized:
+        return 0
+    if "junior" in normalized or "1-3" in normalized or "1 to 3" in normalized:
+        return 2
+    if "mid" in normalized or "3-5" in normalized or "3 to 5" in normalized:
+        return 4
+    if "senior" in normalized or "5+" in normalized or "5 plus" in normalized:
+        return 6
+    return 999
+
+
+def _search_jobs(role: str, location: str, experience_level: str | None, experience_years: int) -> list[dict]:
+    if location:
+        jobs = search_jobs_for_city(role, location, experience_level)
+        return _merge_and_dedupe_jobs(jobs)
+
+    collected: list[dict] = []
+    with ThreadPoolExecutor(max_workers=min(len(DEFAULT_METRO_CITIES), 5)) as executor:
+        futures = {
+            executor.submit(search_jobs_for_city, role, city, experience_level): city
+            for city in DEFAULT_METRO_CITIES
+        }
+        for future in as_completed(futures):
+            city = futures[future]
+            try:
+                collected.extend(future.result())
+            except Exception as exc:
+                logger.exception("Unexpected city search failure for %s: %s", city, exc)
+
+    return _merge_and_dedupe_jobs(collected, max_jobs=len(collected) or MAX_JOBS)
 
 
 def _experience_keyword(experience: str | None) -> str:
@@ -69,6 +148,67 @@ def scrape_jobs(role: str, location: str, candidate_experience_years: int = 999,
     if not query:
         return []
     return _fetch_jobs(query, wanted=MAX_RESULTS, candidate_experience_years=candidate_experience_years)
+
+
+def _merge_and_dedupe_jobs(jobs: list[dict], max_jobs: int = MAX_JOBS) -> list[dict]:
+    merged: dict[tuple[str, str], dict] = {}
+    for job in jobs:
+        title = (job.get("title") or "").strip()
+        company = (job.get("company") or "").strip()
+        if not title or not company:
+            continue
+        key = (title.lower(), company.lower())
+        source_city = job.get("source_city")
+        source_role = job.get("source_role")
+        if key not in merged:
+            normalized_job = dict(job)
+            if isinstance(source_city, list):
+                normalized_job["source_city"] = [city for city in source_city if city]
+            elif source_city:
+                normalized_job["source_city"] = source_city
+            else:
+                normalized_job["source_city"] = ""
+            if isinstance(source_role, list):
+                normalized_job["source_role"] = [role for role in source_role if role]
+            elif source_role:
+                normalized_job["source_role"] = source_role
+            else:
+                normalized_job["source_role"] = ""
+            merged[key] = normalized_job
+            continue
+
+        existing = merged[key]
+        existing_sources = existing.get("source_city", [])
+        if isinstance(existing_sources, str):
+            existing_sources = [existing_sources] if existing_sources else []
+        incoming_sources = [source_city] if isinstance(source_city, str) and source_city else list(source_city or [])
+        for city in incoming_sources:
+            if city and city not in existing_sources:
+                existing_sources.append(city)
+        if len(existing_sources) == 1:
+            existing["source_city"] = existing_sources[0]
+        else:
+            existing["source_city"] = existing_sources
+
+        existing_roles = existing.get("source_role", [])
+        if isinstance(existing_roles, str):
+            existing_roles = [existing_roles] if existing_roles else []
+        incoming_roles = [source_role] if isinstance(source_role, str) and source_role else list(source_role or [])
+        for role in incoming_roles:
+            if role and role not in existing_roles:
+                existing_roles.append(role)
+        if len(existing_roles) == 1:
+            existing["source_role"] = existing_roles[0]
+        else:
+            existing["source_role"] = existing_roles
+
+        if len((existing.get("description") or "")) < len((job.get("description") or "")):
+            for field in ("location", "description", "url", "job_url", "source", "job_id", "required_experience_years"):
+                if job.get(field):
+                    existing[field] = job.get(field)
+
+    deduped = list(merged.values())
+    return deduped[:max_jobs]
 
 
 def _fetch_jobs(query: str, wanted: int, candidate_experience_years: int = 999) -> list[dict]:
@@ -144,6 +284,8 @@ def _mock_jobs(role: str, location: str, wanted: int = 5) -> list[dict]:
             "source": "mock",
             "job_id": f"mock-{i}",
             "required_experience_years": None,
+            "source_city": [location_short],
+            "source_role": [role_short],
         })
     return samples[:wanted]
 
@@ -228,6 +370,8 @@ def _normalise(raw: dict) -> dict:
         "source": "google_jobs",
         "job_id": raw.get("job_id", ""),
         "required_experience_years": required_experience,
+        "source_city": [],
+        "source_role": [],
     }
 
 

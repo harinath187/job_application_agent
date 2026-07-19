@@ -32,6 +32,9 @@ class JobResponse(BaseModel):
     location: str
     job_url: str
     description: str
+    source_city: list[str] | str = None
+    source_role: list[str] | str = None
+    role_confidence: float = 0.0
     resume_path: str = None
     cover_letter_path: str = None
     status: str
@@ -161,6 +164,9 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "location": job.get("location"),
                 "job_url": job.get("job_url"),
                 "description": job.get("description", "")[:500],  # Truncate for response
+                "source_city": job.get("source_city"),
+                "source_role": job.get("source_role"),
+                "role_confidence": job.get("role_confidence", 0.0),
                 "resume_path": job.get("resume_path"),
                 "cover_letter_path": job.get("cover_letter_path"),
                 "status": job.get("status", "pending")
@@ -212,6 +218,9 @@ async def get_job_detail(job_id: int) -> JSONResponse:
                     "location": job.get("location"),
                     "job_url": job.get("job_url"),
                     "description": job.get("description", ""),
+                    "source_city": job.get("source_city"),
+                    "source_role": job.get("source_role"),
+                    "role_confidence": job.get("role_confidence", 0.0),
                     "resume_path": job.get("resume_path"),
                     "cover_letter_path": job.get("cover_letter_path"),
                     "status": job.get("status", "pending")

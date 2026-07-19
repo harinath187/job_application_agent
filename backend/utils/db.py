@@ -80,6 +80,9 @@ def init_db() -> None:
                 location TEXT,
                 job_url TEXT,
                 description TEXT,
+                source_city TEXT,
+                source_role TEXT,
+                role_confidence REAL,
                 resume_path TEXT,
                 cover_letter_path TEXT,
                 status TEXT NOT NULL,
@@ -87,6 +90,23 @@ def init_db() -> None:
                 FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
             )
         """)
+        cursor.execute("PRAGMA table_info(jobs)")
+        job_columns = {row[1] for row in cursor.fetchall()}
+        if "source_city" not in job_columns:
+            try:
+                cursor.execute("ALTER TABLE jobs ADD COLUMN source_city TEXT")
+            except Exception:
+                pass
+        if "source_role" not in job_columns:
+            try:
+                cursor.execute("ALTER TABLE jobs ADD COLUMN source_role TEXT")
+            except Exception:
+                pass
+        if "role_confidence" not in job_columns:
+            try:
+                cursor.execute("ALTER TABLE jobs ADD COLUMN role_confidence REAL")
+            except Exception:
+                pass
 
         # Create alert users table
         cursor.execute("""
@@ -263,8 +283,8 @@ def insert_job(session_id: str, job: Dict[str, Any]) -> int:
         created_at = datetime.utcnow().isoformat()
         cursor.execute(
             """INSERT INTO jobs 
-               (session_id, title, company, location, job_url, description, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (session_id, title, company, location, job_url, description, source_city, source_role, role_confidence, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session_id,
                 job.get("title", ""),
@@ -272,6 +292,9 @@ def insert_job(session_id: str, job: Dict[str, Any]) -> int:
                 job.get("location", ""),
                 job.get("job_url", ""),
                 job.get("description", ""),
+                _json_encode(job.get("source_city") if isinstance(job.get("source_city"), list) else ([job.get("source_city")] if job.get("source_city") else [])),
+                _json_encode(job.get("source_role") if isinstance(job.get("source_role"), list) else ([job.get("source_role")] if job.get("source_role") else [])),
+                float(job.get("role_confidence")) if job.get("role_confidence") is not None else None,
                 "pending",
                 created_at
             )
@@ -294,7 +317,15 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM jobs WHERE session_id = ? ORDER BY created_at DESC", (session_id,))
         rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        jobs = []
+        for row in rows:
+            job = dict(row)
+            job["source_city"] = _json_decode(job.get("source_city")) or []
+            job["source_role"] = _json_decode(job.get("source_role")) or []
+            role_confidence = job.get("role_confidence")
+            job["role_confidence"] = float(role_confidence) if role_confidence is not None else 0.0
+            jobs.append(job)
+        return jobs
 
 
 def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
@@ -361,7 +392,14 @@ def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM jobs WHERE id = ?", (job_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        job = dict(row)
+        job["source_city"] = _json_decode(job.get("source_city")) or []
+        job["source_role"] = _json_decode(job.get("source_role")) or []
+        role_confidence = job.get("role_confidence")
+        job["role_confidence"] = float(role_confidence) if role_confidence is not None else 0.0
+        return job
 
 
 def update_job_status(job_id: int, status: str, resume_path: str = None, cover_letter_path: str = None) -> None:
