@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { agentApi } from '../api/agentApi.js'
 import { Button } from '../components/ui/Button.jsx'
 import { Badge } from '../components/ui/Badge.jsx'
+import { buildDownloadFilename } from '../utils/formatters.js'
 
 export function JobDetail() {
   const { jobId } = useParams()
@@ -25,13 +26,13 @@ export function JobDetail() {
     fetchJob()
   }, [jobId])
 
-  const handleDownload = async (filename) => {
+  const handleDownload = async (filename, label) => {
     try {
       const blob = await agentApi.downloadFile(filename)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = filename.split('/').pop() || filename
+      link.download = buildDownloadFilename(job, label, filename)
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -102,7 +103,7 @@ export function JobDetail() {
           )}
           */}
           {job.cover_letter_path && (
-            <button onClick={() => handleDownload(job.cover_letter_path)} className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">
+            <button onClick={() => handleDownload(job.cover_letter_path, 'Cover Letter')} className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">
               Download Cover Letter
             </button>
           )}

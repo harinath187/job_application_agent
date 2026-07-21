@@ -1,14 +1,20 @@
 """
-Heuristic job validation for description quality and seniority fit.
+Heuristic job validation for description quality, seniority fit, and skill overlap.
 """
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
+from agents.skill_extractor import compute_skill_overlap, extract_required_skills
+
 
 logger = logging.getLogger(__name__)
+
+# Minimum fraction (0-1) of a job's required skills the candidate must cover to pass filtering.
+MIN_SKILL_OVERLAP = float(os.getenv("MIN_SKILL_OVERLAP", "0.2"))
 
 
 _SENIORITY_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
@@ -105,13 +111,20 @@ def _bucket_conflicts(candidate_bucket: str, job_bucket: str) -> bool:
     return candidate_bucket != job_bucket
 
 
-def validate_jobs(jobs: list[dict[str, Any]], experience_level: str | None) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def validate_jobs(
+    jobs: list[dict[str, Any]],
+    experience_level: str | None,
+    resume_skills: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """
-    Filter jobs based on description quality and experience fit.
+    Filter jobs based on description quality, experience fit, and (when resume_skills
+    is provided) minimum required-skill overlap. A job is dropped if it fails the
+    experience check OR falls below MIN_SKILL_OVERLAP.
     """
     total_before = len(jobs or [])
     dropped_no_description = 0
     dropped_seniority_mismatch = 0
+    dropped_low_skill_overlap = 0
 
     candidate_bucket = _normalize_candidate_level(experience_level)
     validated: list[dict[str, Any]] = []
@@ -124,7 +137,35 @@ def validate_jobs(jobs: list[dict[str, Any]], experience_level: str | None) -> t
         job_bucket = _classify_seniority(job)
         if _bucket_conflicts(candidate_bucket, job_bucket):
             dropped_seniority_mismatch += 1
+            logger.info(
+                "Filtered job '%s' at '%s': reason=experience_mismatch job_bucket=%s candidate_bucket=%s",
+                job.get("title", ""),
+                job.get("company", ""),
+                job_bucket,
+                candidate_bucket,
+            )
             continue
+
+        # Only spend an LLM call on skill extraction for jobs that already passed
+        # the free checks above, since a rejected job's skills are never used.
+        if resume_skills is not None:
+            job_skills = extract_required_skills(job.get("description", ""), job_id=job.get("id"))
+            overlap = compute_skill_overlap(resume_skills, job_skills)
+            job["required_skills"] = job_skills
+            job["matched_skills"] = overlap.matched_skills
+            job["missing_skills"] = overlap.missing_skills
+            job["skill_overlap_score"] = overlap.overlap_score
+
+            if overlap.overlap_score < MIN_SKILL_OVERLAP:
+                dropped_low_skill_overlap += 1
+                logger.info(
+                    "Filtered job '%s' at '%s': reason=low_skill_overlap overlap_score=%.2f threshold=%.2f",
+                    job.get("title", ""),
+                    job.get("company", ""),
+                    overlap.overlap_score,
+                    MIN_SKILL_OVERLAP,
+                )
+                continue
 
         validated.append(job)
 
@@ -132,14 +173,17 @@ def validate_jobs(jobs: list[dict[str, Any]], experience_level: str | None) -> t
         "total_before": total_before,
         "dropped_no_description": dropped_no_description,
         "dropped_seniority_mismatch": dropped_seniority_mismatch,
+        "dropped_low_skill_overlap": dropped_low_skill_overlap,
         "total_after": len(validated),
     }
     logger.info(
-        "Validated %s jobs: before=%s dropped_no_description=%s dropped_seniority_mismatch=%s after=%s candidate_bucket=%s",
+        "Validated %s jobs: before=%s dropped_no_description=%s dropped_seniority_mismatch=%s "
+        "dropped_low_skill_overlap=%s after=%s candidate_bucket=%s",
         len(validated),
         total_before,
         dropped_no_description,
         dropped_seniority_mismatch,
+        dropped_low_skill_overlap,
         len(validated),
         candidate_bucket,
     )

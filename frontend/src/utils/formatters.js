@@ -27,3 +27,22 @@ export function sanitiseCompanyName(name) {
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
 }
+
+function getFileExtension(path) {
+  const basename = path.split('/').pop() || path
+  const dotIndex = basename.lastIndexOf('.')
+  return dotIndex > -1 ? basename.slice(dotIndex) : ''
+}
+
+/**
+ * Builds a human-readable download filename (e.g. "50Hertz - Front End Developer - Cover Letter.docx")
+ * from job title/company, falling back to the server-generated basename when either is missing.
+ */
+export function buildDownloadFilename(job, label, serverPath) {
+  const extension = getFileExtension(serverPath || '')
+  const parts = [job?.company, job?.title, label].filter((part) => part && part.trim())
+  if (parts.length === 0) {
+    return (serverPath || '').split('/').pop() || serverPath
+  }
+  return `${parts.join(' - ')}${extension}`
+}

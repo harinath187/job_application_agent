@@ -39,8 +39,69 @@ def test_validate_jobs_filters_fresher_batch():
         "total_before": 4,
         "dropped_no_description": 1,
         "dropped_seniority_mismatch": 1,
+        "dropped_low_skill_overlap": 0,
         "total_after": 2,
     }
+
+
+def test_validate_jobs_passes_both_experience_and_skill_checks(monkeypatch):
+    from backend.agents import job_validator
+
+    monkeypatch.setattr(job_validator, "extract_required_skills", lambda description, job_id=None: ["Python", "SQL"])
+    monkeypatch.setattr(job_validator, "MIN_SKILL_OVERLAP", 0.2)
+
+    jobs = [{"title": "Junior Python Developer", "description": "Entry level Python role requiring SQL knowledge."}]
+
+    filtered, stats = job_validator.validate_jobs(jobs, "fresher", resume_skills=["Python", "SQL"])
+
+    assert len(filtered) == 1
+    assert stats["dropped_seniority_mismatch"] == 0
+    assert stats["dropped_low_skill_overlap"] == 0
+
+
+def test_validate_jobs_fails_experience_only(monkeypatch):
+    from backend.agents import job_validator
+
+    monkeypatch.setattr(job_validator, "extract_required_skills", lambda description, job_id=None: ["Python", "SQL"])
+
+    jobs = [{"title": "Senior Backend Engineer", "description": "Need 7+ years building distributed systems in Python and SQL."}]
+
+    filtered, stats = job_validator.validate_jobs(jobs, "fresher", resume_skills=["Python", "SQL"])
+
+    assert len(filtered) == 0
+    assert stats["dropped_seniority_mismatch"] == 1
+    assert stats["dropped_low_skill_overlap"] == 0
+
+
+def test_validate_jobs_fails_skills_only(monkeypatch):
+    from backend.agents import job_validator
+
+    monkeypatch.setattr(job_validator, "extract_required_skills", lambda description, job_id=None: ["Rust", "Kubernetes", "Go"])
+    monkeypatch.setattr(job_validator, "MIN_SKILL_OVERLAP", 0.2)
+
+    jobs = [{"title": "Junior Platform Engineer", "description": "Entry level role working with Rust, Kubernetes, and Go."}]
+
+    filtered, stats = job_validator.validate_jobs(jobs, "fresher", resume_skills=["Python", "SQL"])
+
+    assert len(filtered) == 0
+    assert stats["dropped_seniority_mismatch"] == 0
+    assert stats["dropped_low_skill_overlap"] == 1
+
+
+def test_validate_jobs_fails_both_experience_and_skills(monkeypatch):
+    from backend.agents import job_validator
+
+    monkeypatch.setattr(job_validator, "extract_required_skills", lambda description, job_id=None: ["Rust", "Kubernetes", "Go"])
+    monkeypatch.setattr(job_validator, "MIN_SKILL_OVERLAP", 0.2)
+
+    jobs = [{"title": "Senior Platform Engineer", "description": "Need 7+ years with Rust, Kubernetes, and Go."}]
+
+    filtered, stats = job_validator.validate_jobs(jobs, "fresher", resume_skills=["Python", "SQL"])
+
+    assert len(filtered) == 0
+    assert stats["dropped_seniority_mismatch"] == 1
+    # Skill extraction is never invoked once the experience check already failed.
+    assert stats["dropped_low_skill_overlap"] == 0
 
 
 def test_session_data_includes_validation_stats(temp_db):

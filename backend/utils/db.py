@@ -93,6 +93,9 @@ def init_db() -> None:
                 final_score REAL,
                 experience_match_score REAL,
                 seniority_bucket TEXT,
+                skill_match_percentage REAL,
+                matched_skills TEXT,
+                missing_skills TEXT,
                 resume_path TEXT,
                 cover_letter_path TEXT,
                 status TEXT NOT NULL,
@@ -122,6 +125,9 @@ def init_db() -> None:
             ("final_score", "ALTER TABLE jobs ADD COLUMN final_score REAL"),
             ("experience_match_score", "ALTER TABLE jobs ADD COLUMN experience_match_score REAL"),
             ("seniority_bucket", "ALTER TABLE jobs ADD COLUMN seniority_bucket TEXT"),
+            ("skill_match_percentage", "ALTER TABLE jobs ADD COLUMN skill_match_percentage REAL"),
+            ("matched_skills", "ALTER TABLE jobs ADD COLUMN matched_skills TEXT"),
+            ("missing_skills", "ALTER TABLE jobs ADD COLUMN missing_skills TEXT"),
         ):
             if column not in job_columns:
                 try:
@@ -305,9 +311,9 @@ def insert_job(session_id: str, job: Dict[str, Any]) -> int:
         cursor = conn.cursor()
         created_at = datetime.utcnow().isoformat()
         cursor.execute(
-            """INSERT INTO jobs 
-               (session_id, title, company, location, job_url, description, source_city, source_role, role_confidence, relevance_score, final_score, experience_match_score, seniority_bucket, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO jobs
+               (session_id, title, company, location, job_url, description, source_city, source_role, role_confidence, relevance_score, final_score, experience_match_score, seniority_bucket, skill_match_percentage, matched_skills, missing_skills, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session_id,
                 job.get("title", ""),
@@ -322,6 +328,9 @@ def insert_job(session_id: str, job: Dict[str, Any]) -> int:
                 float(job.get("final_score")) if job.get("final_score") is not None else None,
                 float(job.get("experience_match_score")) if job.get("experience_match_score") is not None else None,
                 job.get("seniority_bucket"),
+                float(job.get("skill_match_percentage")) if job.get("skill_match_percentage") is not None else None,
+                _json_encode(job.get("matched_skills") or []),
+                _json_encode(job.get("missing_skills") or []),
                 "pending",
                 created_at
             )
@@ -349,9 +358,11 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
             job = dict(row)
             job["source_city"] = _json_decode(job.get("source_city")) or []
             job["source_role"] = _json_decode(job.get("source_role")) or []
+            job["matched_skills"] = _json_decode(job.get("matched_skills")) or []
+            job["missing_skills"] = _json_decode(job.get("missing_skills")) or []
             role_confidence = job.get("role_confidence")
             job["role_confidence"] = float(role_confidence) if role_confidence is not None else 0.0
-            for key in ("relevance_score", "final_score", "experience_match_score"):
+            for key in ("relevance_score", "final_score", "experience_match_score", "skill_match_percentage"):
                 value = job.get(key)
                 job[key] = float(value) if value is not None else 0.0
             jobs.append(job)
@@ -427,9 +438,11 @@ def get_job_by_id(job_id: int) -> Dict[str, Any] | None:
         job = dict(row)
         job["source_city"] = _json_decode(job.get("source_city")) or []
         job["source_role"] = _json_decode(job.get("source_role")) or []
+        job["matched_skills"] = _json_decode(job.get("matched_skills")) or []
+        job["missing_skills"] = _json_decode(job.get("missing_skills")) or []
         role_confidence = job.get("role_confidence")
         job["role_confidence"] = float(role_confidence) if role_confidence is not None else 0.0
-        for key in ("relevance_score", "final_score", "experience_match_score"):
+        for key in ("relevance_score", "final_score", "experience_match_score", "skill_match_percentage"):
             value = job.get(key)
             job[key] = float(value) if value is not None else 0.0
         return job

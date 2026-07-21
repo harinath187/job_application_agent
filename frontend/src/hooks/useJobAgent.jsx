@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import PropTypes from 'prop-types'
 import { agentApi } from '../api/agentApi.js'
 import { POLLING_INTERVAL_MS } from '../utils/constants.js'
+import { buildDownloadFilename } from '../utils/formatters.js'
 
 const JobAgentContext = createContext(null)
 const STORAGE_KEY = 'jobAgentSession'
@@ -301,13 +302,13 @@ export function JobAgentProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleDownload = async (filename) => {
+  const handleDownload = async (filename, job, label) => {
     try {
       const blob = await agentApi.downloadFile(filename)
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = filename
+      link.download = buildDownloadFilename(job, label, filename)
       document.body.appendChild(link)
       link.click()
       link.remove()

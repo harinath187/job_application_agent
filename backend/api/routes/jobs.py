@@ -46,6 +46,9 @@ class JobResponse(BaseModel):
     source_city: list[str] | str = None
     source_role: list[str] | str = None
     role_confidence: float = 0.0
+    skill_match_percentage: float = 0.0
+    matched_skills: list[str] = []
+    missing_skills: list[str] = []
     resume_path: str = None
     cover_letter_path: str = None
     status: str
@@ -186,6 +189,9 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "final_score": job.get("final_score", 0.0),
                 "experience_match_score": job.get("experience_match_score", 0.0),
                 "seniority_bucket": job.get("seniority_bucket"),
+                "skill_match_percentage": job.get("skill_match_percentage", 0.0),
+                "matched_skills": job.get("matched_skills", []),
+                "missing_skills": job.get("missing_skills", []),
                 "resume_path": job.get("resume_path"),
                 "cover_letter_path": job.get("cover_letter_path"),
                 "status": _job_status_for_api(job.get("status"))
@@ -245,6 +251,9 @@ async def get_job_detail(job_id: int) -> JSONResponse:
                     "final_score": job.get("final_score", 0.0),
                     "experience_match_score": job.get("experience_match_score", 0.0),
                     "seniority_bucket": job.get("seniority_bucket"),
+                    "skill_match_percentage": job.get("skill_match_percentage", 0.0),
+                    "matched_skills": job.get("matched_skills", []),
+                    "missing_skills": job.get("missing_skills", []),
                     "resume_path": job.get("resume_path"),
                     "cover_letter_path": job.get("cover_letter_path"),
                     "status": _job_status_for_api(job.get("status"))

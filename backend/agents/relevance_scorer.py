@@ -7,6 +7,18 @@ import os
 import re
 from typing import Iterable
 
+from agents.skill_extractor import compute_skill_overlap, extract_required_skills
+
+
+# Relative importance of each scoring factor in compute_final_score. Values are
+# normalized against their sum, so they don't need to add up to any fixed total.
+SCORE_WEIGHTS = {
+    "relevance": float(os.getenv("SCORE_WEIGHT_RELEVANCE", "40")),
+    "role_confidence": float(os.getenv("SCORE_WEIGHT_ROLE_CONFIDENCE", "25")),
+    "experience_match": float(os.getenv("SCORE_WEIGHT_EXPERIENCE_MATCH", "15")),
+    "skill_overlap": float(os.getenv("SCORE_WEIGHT_SKILL_OVERLAP", "20")),
+}
+
 
 _PHRASE_PATTERNS = (
     "machine learning",
@@ -155,9 +167,11 @@ def compute_final_score(
     projects: list[str],
     certifications: list[str],
     experience_level: str | None,
+    resume_skills: list[str] | None = None,
 ) -> dict:
     """
-    Combine relevance, role confidence, and experience fit into a final 0-100 score.
+    Combine relevance, role confidence, experience fit, and skill overlap into a
+    final 0-100 score, weighted by SCORE_WEIGHTS.
     """
     relevance_score = compute_role_confidence(job, projects, certifications)
     role_confidence = float(job.get("role_confidence") or compute_role_confidence(job, projects, certifications) or 0.0)
@@ -169,17 +183,47 @@ def compute_final_score(
     else:
         experience_match_score = 1.0 if job_bucket == candidate_bucket else 0.0
 
+    # Filtering (job_validator.validate_jobs) already computes and caches skill
+    # overlap on the job dict when resume_skills is supplied; reuse it here so
+    # ranking never triggers a second LLM extraction call for the same job.
+    if "skill_overlap_score" in job:
+        skill_overlap_score = float(job.get("skill_overlap_score") or 0.0)
+        matched_skills = job.get("matched_skills", [])
+        missing_skills = job.get("missing_skills", [])
+        required_skills = job.get("required_skills", [])
+    elif resume_skills is not None:
+        required_skills = extract_required_skills(job.get("description", ""), job_id=job.get("id"))
+        overlap = compute_skill_overlap(resume_skills, required_skills)
+        skill_overlap_score = overlap.overlap_score
+        matched_skills = overlap.matched_skills
+        missing_skills = overlap.missing_skills
+    else:
+        skill_overlap_score = 0.0
+        matched_skills = []
+        missing_skills = []
+        required_skills = []
+
+    weights = SCORE_WEIGHTS
+    weight_total = sum(weights.values()) or 1.0
     final_score = (
-        (relevance_score * 55.0) +
-        (role_confidence * 30.0) +
-        (experience_match_score * 15.0)
-    )
+        (relevance_score * weights["relevance"]) +
+        (role_confidence * weights["role_confidence"]) +
+        (experience_match_score * weights["experience_match"]) +
+        (skill_overlap_score * weights["skill_overlap"])
+    ) * (100.0 / weight_total)
     final_score = max(0.0, min(100.0, final_score))
+
+    skill_match_percentage = round(skill_overlap_score * 100.0, 2)
     return {
         "final_score": round(final_score, 2),
         "relevance_score": round(relevance_score * 100.0, 2),
         "role_confidence_score": round(role_confidence * 100.0, 2),
         "experience_match_score": round(experience_match_score * 100.0, 2),
+        "skill_overlap_score": round(skill_overlap_score * 100.0, 2),
         "seniority_bucket": job_bucket,
         "candidate_experience_bucket": candidate_bucket,
+        "required_skills": required_skills,
+        "matched_skills": matched_skills,
+        "missing_skills": missing_skills,
+        "skill_match_percentage": skill_match_percentage,
     }

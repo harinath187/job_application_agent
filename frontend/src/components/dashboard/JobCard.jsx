@@ -32,6 +32,11 @@ export function JobCard({ job, onDownloadResume, onDownloadCoverLetter, onViewDe
         <Badge label={job.status || 'pending'} variant={statusVariant[job.status] || 'new'} />
       </div>
       <p className="mb-4 text-sm leading-6 text-slate-600 dark:text-gray-400">{truncateText(job.description, 120)}</p>
+      {(job.matched_skills?.length > 0 || job.missing_skills?.length > 0) && (
+        <p className="mb-4 text-sm font-medium text-slate-600 dark:text-gray-400">
+          {job.matched_skills.length} of {job.matched_skills.length + job.missing_skills.length} required skills matched
+        </p>
+      )}
       {statusMessage[job.status] && (
         <p className="mb-4 text-sm font-medium text-amber-500 dark:text-amber-400">{statusMessage[job.status]}</p>
       )}
@@ -53,7 +58,7 @@ export function JobCard({ job, onDownloadResume, onDownloadCoverLetter, onViewDe
         <button
           type="button"
           className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-indigo-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-200"
-          onClick={() => onDownloadCoverLetter(job.cover_letter_path)}
+          onClick={() => onDownloadCoverLetter(job.cover_letter_path, job, 'Cover Letter')}
           disabled={!job.cover_letter_path}
         >
           <Download size={16} />
@@ -81,7 +86,10 @@ JobCard.propTypes = {
     job_url: PropTypes.string,
     resume_path: PropTypes.string,
     cover_letter_path: PropTypes.string,
-    status: PropTypes.string
+    status: PropTypes.string,
+    skill_match_percentage: PropTypes.number,
+    matched_skills: PropTypes.arrayOf(PropTypes.string),
+    missing_skills: PropTypes.arrayOf(PropTypes.string)
   }).isRequired,
   onDownloadResume: PropTypes.func.isRequired,
   onDownloadCoverLetter: PropTypes.func.isRequired,

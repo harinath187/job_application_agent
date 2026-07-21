@@ -12,7 +12,7 @@ from agents.job_validator import validate_jobs
 from agents.relevance_scorer import compute_final_score, compute_role_confidence
 from agents.scraper_agent import run_scraper_agent
 # from agents.tailor_agent import tailor_resume, save_tailored_resume
-# from agents.cover_letter_agent import generate_cover_letter
+from agents.cover_letter_agent import generate_cover_letter
 from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
 from utils.db import (
     insert_job,
@@ -105,7 +105,7 @@ def _run_post_parse_pipeline(state: AgentState) -> AgentState:
     state = auto_alert_registration_node(state)
     state = scraper_node(state)
     # state = tailor_node(state)
-    # state = cover_letter_node(state)
+    state = cover_letter_node(state)
     return state
 
 
@@ -211,7 +211,8 @@ def scraper_node(state: AgentState) -> AgentState:
 
     jobs_state = run_scraper_agent(state)
     jobs = jobs_state.get("jobs", [])
-    jobs, validation_stats = validate_jobs(jobs, state.get("experience_level"))
+    resume_skills = state.get("extracted_skills", [])
+    jobs, validation_stats = validate_jobs(jobs, state.get("experience_level"), resume_skills)
     state["validation_stats"] = validation_stats
     projects = state.get("projects", [])
     certifications = state.get("certifications", [])
@@ -222,7 +223,7 @@ def scraper_node(state: AgentState) -> AgentState:
     scored_jobs = []
     for job in jobs:
         job["role_confidence"] = compute_role_confidence(job, projects, certifications)
-        scores = compute_final_score(job, projects, certifications, state.get("experience_level"))
+        scores = compute_final_score(job, projects, certifications, state.get("experience_level"), resume_skills)
         job.update(scores)
         scored_jobs.append(job)
 
@@ -317,86 +318,79 @@ def scraper_node(state: AgentState) -> AgentState:
 #     return state
 
 
-# def cover_letter_node(state: AgentState) -> AgentState:
-#     """
-#     Node that generates tailored cover letters for each job.
-#     Updates database with completed status after each job is processed for incremental display.
-#     Uses the candidate's skills and tailored resume summary for specificity.
-#
-#     Args:
-#         state: Current agent state
-#
-#     Returns:
-#         Updated state with cover letter paths
-#     """
-#     cover_letter_paths = []
-#     skills = state.get("extracted_skills", [])  # Get extracted skills from state
-#
-#     # Use the resume text as fallback summary if tailored summary not available
-#     resume_summary = state.get("resume_text", "")[:500]
-#
-#     for tailored_item in state.get("tailored_resumes", []):
-#         time.sleep(2)
-#         job = tailored_item.get("job", {})
-#         tailored_data = tailored_item.get("tailored", {})
-#
-#         logger.info(f"Generating cover letter for {job.get('title')} at {job.get('company')}")
-#
-#         if tailored_data.get("status") == "failed":
-#             logger.warning("Skipping cover letter generation for %s because tailoring failed", job.get("title", ""))
-#             job_id = job.get("id")
-#             if job_id:
-#                 update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
-#             continue
-#
-#         # Use the tailored resume summary if available (more specific than generic resume text)
-#         tailored_resume_summary = tailored_data.get("summary", "") or tailored_data.get("rewritten_summary", "") or resume_summary
-#
-#         try:
-#             cover_letter_path = generate_cover_letter(
-#                 job=job,
-#                 summary=resume_summary,
-#                 skills=skills,
-#                 output_dir=str(COVER_LETTERS_DIR),
-#                 tailored_resume_summary=tailored_resume_summary  # Pass tailored summary for better specificity
-#             )
-#         except GroqCallFailedError as exc:
-#             job_id = job.get("id")
-#             if job_id:
-#                 update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
-#             logger.error("Cover letter generation failed for job %s due to Groq rate limiting: %s", job.get("title", ""), exc)
-#             continue
-#         except Exception as exc:
-#             job_id = job.get("id")
-#             if job_id:
-#                 update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
-#             logger.exception("Cover letter generation failed for job %s: %s", job.get("title", ""), exc)
-#             continue
-#
-#         if cover_letter_path:
-#             cover_letter_paths.append(cover_letter_path)
-#
-#         # Convert absolute paths to relative paths for storage
-#         relative_tailored_resume_path = get_relative_path(tailored_item.get("resume_path", "")) if tailored_item.get("resume_path") else None
-#         relative_cover_letter_path = get_relative_path(cover_letter_path) if cover_letter_path else None
-#
-#         # Update job in database immediately as "complete" so frontend displays it incrementally
-#         job_id = job.get("id")
-#         if job_id:
-#             update_job_status(
-#                 job_id=job_id,
-#                 status=COMPLETED_STATUS,
-#                 resume_path=relative_tailored_resume_path,
-#                 cover_letter_path=relative_cover_letter_path
-#             )
-#             logger.info(f"Updated job {job_id} to complete status")
-#
-#         time.sleep(2)  # Pause after each tailor + cover letter pair to reduce Groq rate limit pressure.
-#
-#     state["cover_letter_paths"] = cover_letter_paths
-#     logger.info(f"Generated {len(cover_letter_paths)} cover letters")
-#
-#     return state
+def cover_letter_node(state: AgentState) -> AgentState:
+    """
+    Node that generates cover letters for each ranked job.
+    Updates database with completed status after each job is processed for incremental display.
+    Resume tailoring is disabled, so this uses the raw resume text as the summary source.
+
+    Args:
+        state: Current agent state
+
+    Returns:
+        Updated state with cover letter paths
+    """
+    cover_letter_paths = []
+    skills = state.get("extracted_skills", [])  # Get extracted skills from state
+
+    # Resume tailoring is disabled, so fall back to the raw resume text as the summary.
+    resume_summary = state.get("resume_text", "")[:500]
+
+    jobs_to_process = state.get("top_ranked_jobs") or state.get("jobs", [])
+    for job in jobs_to_process:
+        time.sleep(2)
+        logger.info(f"Generating cover letter for {job.get('title')} at {job.get('company')}")
+
+        try:
+            cover_letter_path = generate_cover_letter(
+                job=job,
+                summary=resume_summary,
+                skills=skills,
+                output_dir=str(COVER_LETTERS_DIR),
+                tailored_resume_summary=resume_summary,
+            )
+        except GroqCallFailedError as exc:
+            job_id = job.get("id")
+            if job_id:
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.error("Cover letter generation failed for job %s due to Groq rate limiting: %s", job.get("title", ""), exc)
+            continue
+        except Exception as exc:
+            job_id = job.get("id")
+            if job_id:
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.exception("Cover letter generation failed for job %s: %s", job.get("title", ""), exc)
+            continue
+
+        if not cover_letter_path:
+            job_id = job.get("id")
+            if job_id:
+                update_job_status(job_id=job_id, status=GENERATION_FAILED_STATUS, resume_path=None, cover_letter_path=None)
+            logger.warning("No cover letter was generated for %s; marking the job as %s", job.get("title", ""), GENERATION_FAILED_STATUS)
+            continue
+
+        cover_letter_paths.append(cover_letter_path)
+
+        # Convert absolute path to relative path for storage
+        relative_cover_letter_path = get_relative_path(cover_letter_path) if cover_letter_path else None
+
+        # Update job in database immediately as "complete" so frontend displays it incrementally
+        job_id = job.get("id")
+        if job_id:
+            update_job_status(
+                job_id=job_id,
+                status=COMPLETED_STATUS,
+                resume_path=None,
+                cover_letter_path=relative_cover_letter_path
+            )
+            logger.info(f"Updated job {job_id} to complete status")
+
+        time.sleep(2)  # Pause after each cover letter to reduce Groq rate limit pressure.
+
+    state["cover_letter_paths"] = cover_letter_paths
+    logger.info(f"Generated {len(cover_letter_paths)} cover letters")
+
+    return state
 
 
 def build_graph():
@@ -413,7 +407,7 @@ def build_graph():
     workflow.add_node("auto_alert_registration", auto_alert_registration_node)
     workflow.add_node("scraper", scraper_node)
     # workflow.add_node("tailor", tailor_node)
-    # workflow.add_node("cover_letter", cover_letter_node)
+    workflow.add_node("cover_letter", cover_letter_node)
 
     # Define edges (linear flow)
     workflow.set_entry_point("pdf_parser")
@@ -428,8 +422,8 @@ def build_graph():
     )
     # workflow.add_edge("scraper", "tailor")
     # workflow.add_edge("tailor", "cover_letter")
-    # workflow.add_edge("cover_letter", END)
-    workflow.add_edge("scraper", END)
+    workflow.add_edge("scraper", "cover_letter")
+    workflow.add_edge("cover_letter", END)
     
     # Compile and return
     graph = workflow.compile()
