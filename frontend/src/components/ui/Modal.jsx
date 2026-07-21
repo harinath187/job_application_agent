@@ -23,10 +23,10 @@ export function Modal({ isOpen, onClose, title, children }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-6">
-      <div className="w-full max-w-2xl rounded-xl border border-gray-800 bg-gray-900 p-6 shadow-2xl">
+      <div className="w-full max-w-2xl rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-2xl">
         <div className="mb-6 flex items-center justify-between gap-4">
-          <h2 className="text-xl font-semibold text-white">{title}</h2>
-          <button type="button" className="text-gray-400 transition hover:text-white" onClick={onClose}>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">{title}</h2>
+          <button type="button" className="text-slate-500 dark:text-gray-400 transition hover:text-slate-900 dark:hover:text-white" onClick={onClose}>
             <X size={20} />
           </button>
         </div>

@@ -13,7 +13,7 @@ export function Dashboard() {
   const jobReferenceId = searchParams.get('jobReferenceId')
   const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload, submitExperienceLevel } = useJobAgent()
 
-  const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete').length, [jobs])
+  const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete' || job.status === 'completed').length, [jobs])
   const isComplete = status === 'Complete!'
   const needsExperienceInput = status === 'needs_experience_input'
 
@@ -34,16 +34,16 @@ export function Dashboard() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)] bg-gray-950 text-white">
+    <div className="flex min-h-[calc(100vh-64px)] bg-slate-50 text-slate-900 dark:bg-gray-950 dark:text-white">
       <Sidebar />
       <main className="flex-1 px-6 py-8">
         <div className="mx-auto max-w-7xl space-y-8">
-          <div className="rounded-[2.5rem] border border-gray-800 bg-gray-900 p-8 shadow-2xl shadow-black/25">
+          <div className="rounded-[2.5rem] border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 shadow-2xl shadow-black/5 dark:shadow-black/25">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p className="text-sm uppercase tracking-[0.28em] text-indigo-300">Pipeline overview</p>
-                <h1 className="mt-3 text-3xl font-semibold text-indigo-300">Processing your tailored applications</h1>
-                <p className="mt-3 max-w-2xl text-gray-400">This page polls the backend for live updates as the agent sources jobs, tailors resumes, and generates cover letters.</p>
+                <p className="text-sm uppercase tracking-[0.28em] text-indigo-600 dark:text-indigo-300">Pipeline overview</p>
+                <h1 className="mt-3 text-3xl font-semibold text-indigo-600 dark:text-indigo-300">Processing your tailored applications</h1>
+                <p className="mt-3 max-w-2xl text-slate-600 dark:text-gray-400">This page polls the backend for live updates as the agent sources jobs, tailors resumes, and generates cover letters.</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 {isProcessing && (
@@ -55,11 +55,11 @@ export function Dashboard() {
           </div>
 
           <StatusBar status={status} jobsTotal={jobs.length} jobsComplete={jobsComplete} />
-          {error && <div className="rounded-3xl border border-red-700 bg-red-950 p-4 text-sm text-red-200">{error}</div>}
+          {error && <div className="rounded-3xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 p-4 text-sm text-red-700 dark:text-red-200">{error}</div>}
           {needsExperienceInput && (
-            <div className="rounded-3xl border border-amber-500/30 bg-amber-950/40 p-5 text-amber-50">
+            <div className="rounded-3xl border border-amber-500/30 bg-amber-100 dark:bg-amber-950/40 p-5 text-amber-900 dark:text-amber-50">
               <h2 className="text-lg font-semibold">Pick your experience level</h2>
-              <p className="mt-2 text-sm text-amber-100/80">We paused the pipeline because the resume did not provide a reliable experience signal.</p>
+              <p className="mt-2 text-sm text-amber-800/80 dark:text-amber-100/80">We paused the pipeline because the resume did not provide a reliable experience signal.</p>
               <div className="mt-4 flex flex-wrap gap-3">
                 {[
                   ['Fresher', 'fresher'],

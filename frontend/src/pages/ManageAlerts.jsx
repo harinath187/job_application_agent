@@ -92,24 +92,24 @@ export function ManageAlerts() {
     <main className="mx-auto max-w-4xl px-6 py-10">
       <h1 className="text-2xl font-semibold">Manage Alerts</h1>
 
-      <section className="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-6">
+      <section className="mt-6 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Active Alert Emails</h2>
-            <p className="mt-1 text-sm text-gray-400">Emails with active job alert preferences.</p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-gray-400">Emails with active job alert preferences.</p>
           </div>
           <Button onClick={loadActiveUsers} loading={usersLoading} variant="secondary">Refresh</Button>
         </div>
 
         <div className="mt-5 overflow-x-auto">
           {activeUsers.length === 0 ? (
-            <div className="rounded-2xl border border-gray-800 bg-gray-950 p-4 text-sm text-gray-400">
+            <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-950 p-4 text-sm text-slate-600 dark:text-gray-400">
               {usersLoading ? 'Loading active alerts...' : 'No active alert emails found.'}
             </div>
           ) : (
             <table className="w-full table-auto text-sm">
               <thead>
-                <tr className="text-left text-xs text-gray-400">
+                <tr className="text-left text-xs text-slate-500 dark:text-gray-400">
                   <th className="px-2 py-2">Email</th>
                   <th className="px-2 py-2">Preferences</th>
                   <th className="px-2 py-2">Created</th>
@@ -118,8 +118,8 @@ export function ManageAlerts() {
               </thead>
               <tbody>
                 {activeUsers.map((user) => (
-                  <tr key={user.id} className="border-t border-gray-800">
-                    <td className="px-2 py-3 align-top text-gray-100">{user.email}</td>
+                  <tr key={user.id} className="border-t border-slate-200 dark:border-gray-800">
+                    <td className="px-2 py-3 align-top text-slate-900 dark:text-gray-100">{user.email}</td>
                     <td className="px-2 py-3 align-top">{user.active_preferences}</td>
                     <td className="px-2 py-3 align-top">{new Date(user.created_at).toLocaleString()}</td>
                     <td className="px-2 py-3 align-top">
@@ -137,27 +137,27 @@ export function ManageAlerts() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-xl border border-gray-800 bg-gray-900 p-6">
+      <section className="mt-6 rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6">
         <div className="flex gap-3">
           <input
             type="email"
             placeholder="Enter your email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="flex-1 rounded-2xl border border-gray-700 bg-gray-950 px-4 py-2 text-sm text-white outline-none"
+            className="flex-1 rounded-2xl border border-slate-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-4 py-2 text-sm text-slate-900 dark:text-white outline-none"
           />
           <Button onClick={lookup} loading={loading}>Lookup</Button>
         </div>
-        {error && <div className="mt-4 text-sm text-red-400">{error}</div>}
-        {message && <div className="mt-4 text-sm text-emerald-300">{message}</div>}
+        {error && <div className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</div>}
+        {message && <div className="mt-4 text-sm text-emerald-600 dark:text-emerald-300">{message}</div>}
       </section>
 
       <section className="mt-6">
         {history.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border border-gray-800 bg-gray-900 p-4">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
             <table className="w-full table-auto text-sm">
               <thead>
-                <tr className="text-left text-xs text-gray-400">
+                <tr className="text-left text-xs text-slate-500 dark:text-gray-400">
                   <th className="px-2 py-2">Date</th>
                   <th className="px-2 py-2">Channel</th>
                   <th className="px-2 py-2">Job Title</th>
@@ -167,10 +167,10 @@ export function ManageAlerts() {
               </thead>
               <tbody>
                 {history.map((row, idx) => (
-                  <tr key={idx} className="border-t border-gray-800">
+                  <tr key={idx} className="border-t border-slate-200 dark:border-gray-800">
                     <td className="px-2 py-3 align-top">{new Date(row.sent_at).toLocaleString()}</td>
                     <td className="px-2 py-3 align-top">
-                      <span className="inline-flex items-center rounded-full bg-gray-800 px-3 py-1 text-xs">
+                      <span className="inline-flex items-center rounded-full bg-slate-200 dark:bg-gray-800 text-slate-700 dark:text-gray-200 px-3 py-1 text-xs">
                         {row.channel === 'telegram' ? 'Telegram' : 'Email'}
                       </span>
                     </td>

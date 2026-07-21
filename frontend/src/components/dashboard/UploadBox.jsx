@@ -42,10 +42,10 @@ export function UploadBox({
 
   return (
     <>
-      <label className={`group relative block cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed ${isProcessing ? 'border-gray-700 bg-gray-900/80' : 'border-gray-700 bg-gray-950 hover:border-indigo-500'} p-10 text-center transition dark:border-gray-700 dark:bg-gray-950 dark:hover:border-indigo-500`}>
+      <label className={`group relative block cursor-pointer overflow-hidden rounded-3xl border-2 border-dashed ${isProcessing ? 'border-slate-300 bg-slate-100 dark:border-gray-700 dark:bg-gray-900/80' : 'border-slate-300 bg-white hover:border-indigo-500 dark:border-gray-700 dark:bg-gray-950 dark:hover:border-indigo-500'} p-10 text-center transition`}>
         <input type="file" className="sr-only" accept="application/pdf" onChange={handleChange} disabled={isProcessing} />
         <div onDrop={handleDrop} onDragOver={(event) => event.preventDefault()}>
-          <div className="mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-gray-800 text-indigo-400 transition group-hover:bg-gray-700">
+          <div className="mx-auto mb-6 inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-100 text-indigo-600 transition group-hover:bg-slate-200 dark:bg-gray-800 dark:text-indigo-400 dark:group-hover:bg-gray-700">
             <CloudUpload size={32} />
           </div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Drag your resume PDF here</h2>
@@ -53,7 +53,7 @@ export function UploadBox({
           {isProcessing && <p className="mt-4 text-sm font-medium text-amber-600 dark:text-amber-300">Processing...</p>}
         </div>
       </label>
-      <div className="rounded-3xl border border-gray-800 bg-gray-950/80 p-5 text-left dark:border-gray-800 dark:bg-gray-950/80">
+      <div className="rounded-3xl border border-slate-200 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 p-5 text-left">
         <button
           type="button"
           onClick={onToggleAdvanced}

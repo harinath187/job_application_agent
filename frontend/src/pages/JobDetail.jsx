@@ -52,12 +52,12 @@ export function JobDetail() {
 
   if (error) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10 text-sm text-red-300">{error}</div>
+      <div className="mx-auto max-w-4xl px-6 py-10 text-sm text-red-600 dark:text-red-300">{error}</div>
     )
   }
 
   if (!job) {
-    return <div className="mx-auto max-w-4xl px-6 py-10 text-gray-300">Loading job details…</div>
+    return <div className="mx-auto max-w-4xl px-6 py-10 text-slate-600 dark:text-gray-300">Loading job details…</div>
   }
 
   return (
@@ -68,35 +68,39 @@ export function JobDetail() {
           Back
         </Button>
       </div>
-      <div className="rounded-[2.5rem] border border-gray-800 bg-gray-950 p-8 shadow-2xl shadow-black/25">
+      <div className="rounded-[2.5rem] border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-8 shadow-2xl shadow-black/5 dark:shadow-black/25">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-white">{job.title}</h1>
-            <p className="mt-2 text-gray-400">{job.company} · {job.location}</p>
+            <h1 className="text-3xl font-semibold text-slate-900 dark:text-white">{job.title}</h1>
+            <p className="mt-2 text-slate-600 dark:text-gray-400">{job.company} · {job.location}</p>
           </div>
           <Badge label={job.status || 'pending'} variant={job.status === 'complete' ? 'complete' : job.status === 'failed' ? 'failed' : 'processing'} />
         </div>
 
-        <section className="space-y-6 text-gray-300">
+        <section className="space-y-6 text-slate-700 dark:text-gray-300">
           <div>
-            <h2 className="text-lg font-semibold text-white">Job description</h2>
-            <p className="mt-3 whitespace-pre-line text-sm leading-7 text-gray-300">{job.description}</p>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Job description</h2>
+            <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700 dark:text-gray-300">{job.description}</p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-3xl border border-gray-800 bg-gray-900 p-6">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-gray-500">Resume</h3>
-              <p className="mt-3 text-sm text-gray-400">{job.resume_path ? 'Tailored resume ready for download.' : 'Awaiting generated resume.'}</p>
+            {/* Resume tailoring is disabled; status block commented out.
+            <div className="rounded-3xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-6">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-gray-500">Resume</h3>
+              <p className="mt-3 text-sm text-slate-600 dark:text-gray-400">{job.resume_path ? 'Tailored resume ready for download.' : 'Awaiting generated resume.'}</p>
             </div>
-            <div className="rounded-3xl border border-gray-800 bg-gray-900 p-6">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-gray-500">Cover letter</h3>
-              <p className="mt-3 text-sm text-gray-400">{job.cover_letter_path ? 'Tailored cover letter ready for download.' : 'Awaiting generated cover letter.'}</p>
+            */}
+            <div className="rounded-3xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-6">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-gray-500">Cover letter</h3>
+              <p className="mt-3 text-sm text-slate-600 dark:text-gray-400">{job.cover_letter_path ? 'Tailored cover letter ready for download.' : 'Awaiting generated cover letter.'}</p>
             </div>
           </div>
+          {/* Resume tailoring is disabled; download button commented out.
           {job.resume_path && (
             <button onClick={() => handleDownload(job.resume_path)} className="inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-500">
               Download Resume
             </button>
           )}
+          */}
           {job.cover_letter_path && (
             <button onClick={() => handleDownload(job.cover_letter_path)} className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500">
               Download Cover Letter

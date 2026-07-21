@@ -19,7 +19,7 @@ function getStatusFromJobs(jobs, isProcessing) {
     return 'Parsing resume...'
   }
 
-  const completeCount = jobs.filter((job) => job.status === 'complete').length
+  const completeCount = jobs.filter((job) => job.status === 'complete' || job.status === 'completed').length
   if (completeCount === jobs.length) {
     return 'Complete!'
   }
@@ -41,7 +41,7 @@ function getBackendStatus(data, jobsData) {
   if (jobsData.some((job) => job.status === 'failed')) {
     return 'failed'
   }
-  if (jobsData.length > 0 && jobsData.every((job) => job.status === 'complete')) {
+  if (jobsData.length > 0 && jobsData.every((job) => job.status === 'complete' || job.status === 'completed')) {
     return 'completed'
   }
   return 'processing'
@@ -123,7 +123,6 @@ export function JobAgentProvider({ children }) {
       return
     }
 
-    document.documentElement.classList.toggle('light', theme === 'light')
     document.documentElement.classList.toggle('dark', theme === 'dark')
     window.localStorage.setItem('theme', theme)
   }, [theme])
@@ -341,7 +340,7 @@ export function JobAgentProvider({ children }) {
 
   return (
     <JobAgentContext.Provider value={contextValue}>
-      <div className={theme === 'dark' ? 'min-h-screen bg-gray-950 text-white' : 'min-h-screen bg-slate-50 text-slate-900'}>
+      <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-gray-950 dark:text-white">
         {children}
       </div>
     </JobAgentContext.Provider>

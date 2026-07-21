@@ -15,17 +15,17 @@ export function StatusBar({ status, jobsTotal, jobsComplete }) {
   const progress = jobsTotal > 0 ? Math.min((jobsComplete / jobsTotal) * 100, 100) : 0
 
   return (
-    <div className="space-y-4 rounded-3xl border border-gray-800 bg-gray-900 p-6 shadow-lg shadow-black/20">
+    <div className="space-y-4 rounded-3xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-lg shadow-black/5 dark:shadow-black/20">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm uppercase tracking-[0.24em] text-gray-500">Pipeline status</p>
-          <h3 className="mt-2 text-xl font-semibold text-indigo-300">{stageLabel(status)}</h3>
+          <p className="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-gray-500">Pipeline status</p>
+          <h3 className="mt-2 text-xl font-semibold text-indigo-600 dark:text-indigo-300">{stageLabel(status)}</h3>
         </div>
-        <div className="rounded-full bg-gray-800 px-4 py-2 text-sm font-semibold text-gray-300">
+        <div className="rounded-full bg-slate-200 dark:bg-gray-800 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-gray-300">
           {jobsComplete} of {jobsTotal} jobs complete
         </div>
       </div>
-      <div className="h-3 overflow-hidden rounded-full bg-gray-800">
+      <div className="h-3 overflow-hidden rounded-full bg-slate-200 dark:bg-gray-800">
         <div className="h-full rounded-full bg-indigo-600 transition-all duration-500" style={{ width: `${progress}%` }} />
       </div>
     </div>

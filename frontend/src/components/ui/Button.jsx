@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 
 const variantStyles = {
   primary: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-  secondary: 'bg-gray-800 hover:bg-gray-700 text-gray-200',
+  secondary: 'bg-slate-200 hover:bg-slate-300 text-slate-900 dark:bg-gray-800 dark:hover:bg-gray-700 dark:text-gray-200',
   danger: 'bg-red-600 hover:bg-red-700 text-white',
   ghost: 'bg-transparent text-slate-900 hover:bg-slate-200 dark:text-white dark:hover:bg-white/10'
 }
