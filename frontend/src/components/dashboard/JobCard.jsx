@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import PropTypes from 'prop-types'
 import { ArrowUpRight, Download } from 'lucide-react'
 // FileText icon was used by the resume download button (now disabled)
@@ -19,7 +20,30 @@ const statusMessage = {
   failed_rate_limit: 'Rate limit hit — please retry later'
 }
 
+const BAR_LENGTH = 10
+
+function SkillMatchBar({ percentage }) {
+  const filled = Math.round((percentage / 100) * BAR_LENGTH)
+  const bar = '█'.repeat(filled) + '░'.repeat(BAR_LENGTH - filled)
+  return (
+    <p className="mb-1 font-mono text-sm font-medium text-indigo-600 dark:text-indigo-300">
+      {bar} {Math.round(percentage)}%
+    </p>
+  )
+}
+
+SkillMatchBar.propTypes = {
+  percentage: PropTypes.number.isRequired
+}
+
 export function JobCard({ job, onDownloadResume, onDownloadCoverLetter, onViewDetail }) {
+  const [showSkills, setShowSkills] = useState(false)
+  const matchedCount = job.matched_skills?.length || 0
+  const totalCount = matchedCount + (job.missing_skills?.length || 0)
+  const matchPercentage = typeof job.skill_match_percentage === 'number'
+    ? job.skill_match_percentage
+    : totalCount > 0 ? (matchedCount / totalCount) * 100 : 0
+
   return (
     <div className="group rounded-3xl border border-slate-200 bg-white p-6 text-slate-600 transition hover:border-indigo-500/50 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-400">
       <div className="mb-4 flex items-start justify-between gap-4">
@@ -32,10 +56,44 @@ export function JobCard({ job, onDownloadResume, onDownloadCoverLetter, onViewDe
         <Badge label={job.status || 'pending'} variant={statusVariant[job.status] || 'new'} />
       </div>
       <p className="mb-4 text-sm leading-6 text-slate-600 dark:text-gray-400">{truncateText(job.description, 120)}</p>
-      {(job.matched_skills?.length > 0 || job.missing_skills?.length > 0) && (
-        <p className="mb-4 text-sm font-medium text-slate-600 dark:text-gray-400">
-          {job.matched_skills.length} of {job.matched_skills.length + job.missing_skills.length} required skills matched
-        </p>
+      {totalCount > 0 && (
+        <div className="mb-4">
+          <button
+            type="button"
+            className="w-full text-left"
+            onClick={() => setShowSkills((prev) => !prev)}
+            aria-expanded={showSkills}
+          >
+            <SkillMatchBar percentage={matchPercentage} />
+            <p className="text-sm font-medium text-slate-600 underline decoration-dotted underline-offset-4 dark:text-gray-400">
+              {matchedCount} of {totalCount} required skills matched
+            </p>
+          </button>
+          {showSkills && (
+            <div className="mt-3 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm dark:border-gray-800 dark:bg-gray-900 sm:grid-cols-2">
+              {matchedCount > 0 && (
+                <div>
+                  <p className="mb-1 font-semibold text-emerald-600 dark:text-emerald-400">Matched</p>
+                  <ul className="space-y-1">
+                    {job.matched_skills.map((skill) => (
+                      <li key={skill} className="text-slate-600 dark:text-gray-300">✓ {skill}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {job.missing_skills?.length > 0 && (
+                <div>
+                  <p className="mb-1 font-semibold text-red-500 dark:text-red-400">Missing</p>
+                  <ul className="space-y-1">
+                    {job.missing_skills.map((skill) => (
+                      <li key={skill} className="text-slate-600 dark:text-gray-300">✗ {skill}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
       {statusMessage[job.status] && (
         <p className="mb-4 text-sm font-medium text-amber-500 dark:text-amber-400">{statusMessage[job.status]}</p>

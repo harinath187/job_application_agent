@@ -19,6 +19,7 @@ from utils.db import (
     get_session_data,
     get_search_history,
     set_session_status,
+    update_search_history_criteria,
     update_session_parsed_resume_data,
     update_session_validation_stats,
     update_job_status,
@@ -83,6 +84,11 @@ def pdf_parser_node(state: AgentState) -> AgentState:
             certifications=state.get("certifications", []),
             inferred_roles=inferred_roles,
         )
+        # If the user left the role blank at upload time, backfill Search History
+        # with the role inferred from the resume so it isn't shown blank forever.
+        if not (state.get("extracted_role") or "").strip() and inferred_roles:
+            update_search_history_criteria(session_id, role=inferred_roles[0])
+            state["extracted_role"] = inferred_roles[0]
 
     logger.info(
         "Extracted skills=%s projects=%s certifications=%s inferred_roles=%s experience_years=%s experience=%s email=%s role=%s location=%s",

@@ -59,6 +59,8 @@ async def search_history() -> JSONResponse:
     """Return all saved search sessions."""
     try:
         history = get_search_history()
+        for item in history:
+            item.update(get_session_alert_status(item["session_id"]))
         return JSONResponse(status_code=200, content={"history": history, "count": len(history)})
     except Exception as e:
         logger.error("Error retrieving search history: %s", e)

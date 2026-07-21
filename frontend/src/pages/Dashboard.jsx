@@ -11,23 +11,35 @@ export function Dashboard() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const jobReferenceId = searchParams.get('jobReferenceId')
-  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload, submitExperienceLevel } = useJobAgent()
+  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload, submitExperienceLevel, refreshAlertStatus } = useJobAgent()
 
   const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete' || job.status === 'completed').length, [jobs])
+  const sortedJobs = useMemo(() => {
+    const getMatchScore = (job) => {
+      if (typeof job.skill_match_percentage === 'number') return job.skill_match_percentage
+      const matched = job.matched_skills?.length || 0
+      const total = matched + (job.missing_skills?.length || 0)
+      return total > 0 ? (matched / total) * 100 : 0
+    }
+    return [...jobs].sort((a, b) => getMatchScore(b) - getMatchScore(a))
+  }, [jobs])
   const isComplete = status === 'Complete!'
   const needsExperienceInput = status === 'needs_experience_input'
 
   useEffect(() => {
-    const activeSession = jobReferenceId || sessionId
-    if (!activeSession) {
+    if (!jobReferenceId && !sessionId) {
       navigate('/')
       return
     }
 
-    if (jobReferenceId && jobReferenceId !== sessionId) {
+    // Always refetch when opening a specific record, even if it's the same
+    // session we last viewed — its alert status may have changed elsewhere
+    // (e.g. disabled from Manage Alerts) since we last loaded it.
+    if (jobReferenceId) {
       loadSession(jobReferenceId)
     }
-  }, [jobReferenceId, sessionId, loadSession, navigate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobReferenceId])
 
   const handleViewDetail = (jobId) => {
     navigate(`/jobs/${jobId}`)
@@ -79,11 +91,13 @@ export function Dashboard() {
             alertsEnabled={alertInfo.alertsEnabled}
             alertEmail={alertInfo.alertEmail}
             alertMessage={alertInfo.alertMessage}
+            alertDisabledByUser={alertInfo.alertDisabledByUser}
+            onAlertsToggled={refreshAlertStatus}
           />
 
           <div className="grid gap-6">
             <section className="space-y-6">
-              {jobs.map((job) => (
+              {sortedJobs.map((job) => (
                 <JobCard
                   key={job.id}
                   job={job}

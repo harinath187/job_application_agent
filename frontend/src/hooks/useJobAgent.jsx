@@ -79,7 +79,7 @@ export function JobAgentProvider({ children }) {
   const [status, setStatus] = useState('Waiting for upload')
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
-  const [alertInfo, setAlertInfo] = useState({ alertsEnabled: false, alertEmail: null, alertMessage: '' })
+  const [alertInfo, setAlertInfo] = useState({ alertsEnabled: false, alertEmail: null, alertMessage: '', alertDisabledByUser: false })
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.localStorage.getItem('theme') || 'dark'
@@ -138,7 +138,8 @@ export function JobAgentProvider({ children }) {
         const nextAlertInfo = {
           alertsEnabled: Boolean(data.alerts_enabled),
           alertEmail: data.alert_email || null,
-          alertMessage: data.alert_message || ''
+          alertMessage: data.alert_message || '',
+          alertDisabledByUser: Boolean(data.alert_disabled_by_user)
         }
 
         setJobs(jobsData)
@@ -233,14 +234,14 @@ export function JobAgentProvider({ children }) {
         setError('')
         setIsProcessing(true)
         setStatus('Parsing resume...')
-        setAlertInfo({ alertsEnabled: false, alertEmail: null, alertMessage: '' })
+        setAlertInfo({ alertsEnabled: false, alertEmail: null, alertMessage: '', alertDisabledByUser: false })
 
         const response = await agentApi.uploadResume(file, role, location, experience)
         const session = response.jobReferenceId || response.session_id || response.sessionId || ''
 
         setSessionId(session)
         setStatus('Searching jobs...')
-        persistSession({ sessionId: session, status: 'Searching jobs...', isProcessing: true, alertInfo: { alertsEnabled: false, alertEmail: null, alertMessage: '' } })
+        persistSession({ sessionId: session, status: 'Searching jobs...', isProcessing: true, alertInfo: { alertsEnabled: false, alertEmail: null, alertMessage: '', alertDisabledByUser: false } })
 
         startPolling(session)
         await pollJobs(session)
@@ -289,7 +290,7 @@ export function JobAgentProvider({ children }) {
       setJobs(stored.jobs || [])
       setStatus(stored.status || getStatusFromJobs(stored.jobs || [], false))
       setIsProcessing(Boolean(stored.isProcessing))
-      setAlertInfo(stored.alertInfo || { alertsEnabled: false, alertEmail: null, alertMessage: '' })
+      setAlertInfo(stored.alertInfo || { alertsEnabled: false, alertEmail: null, alertMessage: '', alertDisabledByUser: false })
       if (stored.status !== 'Stopped') {
         loadSession(stored.sessionId, stored.jobs || [])
       }
@@ -301,6 +302,13 @@ export function JobAgentProvider({ children }) {
     // We intentionally only run this effect once on mount to restore any persisted session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const refreshAlertStatus = useCallback(async () => {
+    if (!sessionId) {
+      return
+    }
+    await pollJobs(sessionId)
+  }, [pollJobs, sessionId])
 
   const handleDownload = async (filename, job, label) => {
     try {
@@ -334,9 +342,10 @@ export function JobAgentProvider({ children }) {
       clearSessionStorage,
       handleDownload,
       submitExperienceLevel,
+      refreshAlertStatus,
       toggleTheme
     }),
-    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, handleDownload, submitExperienceLevel, toggleTheme]
+    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, handleDownload, submitExperienceLevel, refreshAlertStatus, toggleTheme]
   )
 
   return (

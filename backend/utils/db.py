@@ -369,6 +369,30 @@ def get_jobs_by_session(session_id: str) -> List[Dict[str, Any]]:
         return jobs
 
 
+def update_search_history_criteria(session_id: str, role: str | None = None, location: str | None = None) -> None:
+    """Backfill the role/location shown in Search History once the resume parser infers them.
+
+    Only overwrites a field when the caller supplies a non-empty value and the
+    stored value is currently blank, so an explicit user-provided role/location
+    is never clobbered.
+    """
+    if not role and not location:
+        return
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        if role:
+            cursor.execute(
+                "UPDATE search_history SET role = ? WHERE session_id = ? AND (role IS NULL OR role = '')",
+                (role, session_id)
+            )
+        if location:
+            cursor.execute(
+                "UPDATE search_history SET location = ? WHERE session_id = ? AND (location IS NULL OR location = '')",
+                (location, session_id)
+            )
+        conn.commit()
+
+
 def get_search_history(session_id: str | None = None) -> List[Dict[str, Any]]:
     """Return saved search runs ordered by most recent first."""
     with get_db_connection() as conn:
@@ -610,8 +634,36 @@ def upsert_session_alert_status(
         conn.commit()
 
 
+def is_alert_email_active(email: str) -> bool:
+    """Return whether an email currently has at least one active, enabled alert preference."""
+    if not email:
+        return False
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        current_time = datetime.utcnow().isoformat()
+        cursor.execute(
+            """SELECT COUNT(*) AS count
+               FROM alert_preferences ap
+               JOIN alert_users au ON ap.user_id = au.id
+               WHERE au.email = ?
+                 AND au.is_active = 1
+                 AND ap.is_active = 1
+                 AND ap.alert_enabled = 1
+                 AND (ap.expires_at IS NULL OR ap.expires_at > ?)""",
+            (email, current_time)
+        )
+        row = cursor.fetchone()
+        return bool(row and row["count"] > 0)
+
+
 def get_session_alert_status(session_id: str) -> Dict[str, Any]:
-    """Return alert registration metadata for an upload session."""
+    """Return alert registration metadata for an upload session.
+
+    The `alerts_enabled` flag reflects the *current* state of the user's alert
+    preferences (looked up live by email), not the snapshot taken when the
+    session first registered for alerts, so disabling/unsubscribing an email
+    on the Manage Alerts page is reflected immediately here too.
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM session_alerts WHERE session_id = ?", (session_id,))
@@ -623,10 +675,18 @@ def get_session_alert_status(session_id: str) -> Dict[str, Any]:
                 "alert_message": "Email alerts pending resume parsing",
             }
         data = dict(row)
+        alert_email = data.get("alert_email")
+        was_registered = bool(data.get("alerts_enabled"))
+        currently_active = is_alert_email_active(alert_email)
+        alerts_enabled = was_registered and currently_active
+        alert_message = data.get("alert_message") or ""
+        if was_registered and not currently_active:
+            alert_message = f"Email alerts have been disabled for {alert_email}."
         return {
-            "alerts_enabled": bool(data.get("alerts_enabled")),
-            "alert_email": data.get("alert_email"),
-            "alert_message": data.get("alert_message") or "",
+            "alerts_enabled": alerts_enabled,
+            "alert_disabled_by_user": was_registered and not currently_active,
+            "alert_email": alert_email,
+            "alert_message": alert_message,
         }
 
 

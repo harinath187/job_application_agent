@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Clock3, FileText, MapPin, Trash2, User } from 'lucide-react'
+import { ArrowRight, Bell, Clock3, FileText, MapPin, Trash2, User } from 'lucide-react'
 import { agentApi } from '../api/agentApi.js'
 import { Button } from '../components/ui/Button.jsx'
 
@@ -10,6 +10,7 @@ export function SearchHistory() {
   const [selectedIds, setSelectedIds] = useState([])
   const [loading, setLoading] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [enablingId, setEnablingId] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -79,6 +80,26 @@ export function SearchHistory() {
     }
   }
 
+  const enableAlerts = async (item) => {
+    if (!item.alert_email) return
+    setEnablingId(item.session_id)
+    setError('')
+    try {
+      await agentApi.toggleAlerts({ email: item.alert_email, active: true })
+      setHistory((current) =>
+        current.map((entry) =>
+          entry.session_id === item.session_id
+            ? { ...entry, alerts_enabled: true, alert_disabled_by_user: false }
+            : entry
+        )
+      )
+    } catch {
+      setError('Unable to enable alerts for this email.')
+    } finally {
+      setEnablingId(null)
+    }
+  }
+
   const selectAll = () => {
     setSelectedIds(history.map((item) => item.session_id))
   }
@@ -139,7 +160,29 @@ export function SearchHistory() {
                     />
                     Select item
                   </label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {item.alert_email && (
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${
+                          item.alerts_enabled
+                            ? 'bg-emerald-700/20 text-emerald-700 dark:bg-emerald-700/30 dark:text-emerald-300'
+                            : 'bg-amber-700/20 text-amber-700 dark:bg-amber-700/30 dark:text-amber-300'
+                        }`}
+                      >
+                        <Bell size={12} />
+                        {item.alerts_enabled ? 'Alerts enabled' : 'Alerts disabled'}
+                      </span>
+                    )}
+                    {item.alert_email && !item.alerts_enabled && (
+                      <Button
+                        onClick={() => enableAlerts(item)}
+                        variant="secondary"
+                        disabled={enablingId === item.session_id}
+                      >
+                        <Bell size={16} />
+                        Enable Alerts
+                      </Button>
+                    )}
                     <Button onClick={() => deleteOne(item.session_id)} variant="danger" disabled={deleting}>
                       <Trash2 size={16} />
                       Delete

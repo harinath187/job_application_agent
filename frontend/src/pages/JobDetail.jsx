@@ -6,6 +6,140 @@ import { Button } from '../components/ui/Button.jsx'
 import { Badge } from '../components/ui/Badge.jsx'
 import { buildDownloadFilename } from '../utils/formatters.js'
 
+const HEADING_PATTERN = /^[A-Za-z][A-Za-z0-9 /&'-]{0,60}:$/
+
+// Recognized section headings, grouped under a canonical label. The order here
+// drives the display order of the templated sections.
+const SECTION_GROUPS = [
+  { key: 'summary', label: 'Summary', match: /^(summary|overview|about( the| this)? (role|job|position)|job summary|description)$/i },
+  { key: 'responsibilities', label: 'Responsibilities', match: /^(responsibilities|key responsibilities|what you.?ll do|duties|role and responsibilities)$/i },
+  { key: 'requirements', label: 'Requirements', match: /^(requirements|qualifications|what we.?re looking for|who you are|skills( required)?|preferred qualifications|minimum qualifications)$/i },
+  { key: 'benefits', label: 'Benefits', match: /^(benefits|perks|what we offer|compensation( and benefits)?)$/i },
+]
+
+const EXPERIENCE_PATTERN = /(\d+\+?\s*(?:-\s*\d+\s*)?\s*(?:years?|yrs?)\s*(?:of\s*)?(?:experience)?)/i
+const PACKAGE_PATTERN = /(₹\s?\d[\d,.]*\s?(?:lpa|lakhs?)?|(?:rs\.?|inr)\s?\d[\d,.]*|\$\s?\d[\d,.]*\s?(?:k|per\s*(?:hour|year|annum))?(?:\s?-\s?\$?\s?\d[\d,.]*\s?(?:k|per\s*(?:hour|year|annum))?)?|ctc[:\s]*[^\n]*\d[^\n]{0,40})/i
+
+function extractQuickFacts(description) {
+  if (!description) return { experience: null, package: null }
+  const experienceMatch = description.match(EXPERIENCE_PATTERN)
+  const packageMatch = description.match(PACKAGE_PATTERN)
+  return {
+    experience: experienceMatch ? experienceMatch[1].trim() : null,
+    package: packageMatch ? packageMatch[1].trim() : null,
+  }
+}
+
+function matchSectionGroup(headingText) {
+  const normalized = headingText.replace(/:$/, '').trim()
+  return SECTION_GROUPS.find((group) => group.match.test(normalized)) || null
+}
+
+function renderBlock(block, key) {
+  const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+  const isBulletBlock = lines.length > 0 && lines.every((line) => line.startsWith('- '))
+
+  if (isBulletBlock) {
+    return (
+      <ul key={key} className="list-disc space-y-1.5 pl-5">
+        {lines.map((line, lineIndex) => (
+          <li key={lineIndex}>{line.replace(/^- /, '')}</li>
+        ))}
+      </ul>
+    )
+  }
+
+  return (
+    <p key={key} className="whitespace-pre-line">
+      {lines.join('\n')}
+    </p>
+  )
+}
+
+function QuickFact({ label, value }) {
+  if (!value) return null
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-gray-500">{label}</p>
+      <p className="mt-1 text-sm font-medium text-slate-900 dark:text-white">{value}</p>
+    </div>
+  )
+}
+
+function JobDescription({ job }) {
+  const description = job?.description
+  if (!description) {
+    return <p className="mt-3 text-sm text-slate-500 dark:text-gray-500">No description provided.</p>
+  }
+
+  const blocks = description.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
+  const { experience, package: packageInfo } = extractQuickFacts(description)
+
+  // Group blocks under recognized section headings; anything before the first
+  // recognized heading (or when no headings are recognized at all) falls
+  // under "Summary" so the description never renders empty.
+  const sections = []
+  let current = { key: 'summary', label: 'Summary', blocks: [] }
+  let sawHeading = false
+
+  blocks.forEach((block) => {
+    const lines = block.split('\n').map((line) => line.trim()).filter(Boolean)
+    const isHeading = lines.length === 1 && HEADING_PATTERN.test(lines[0])
+    const group = isHeading ? matchSectionGroup(lines[0]) : null
+
+    if (isHeading && group) {
+      if (current.blocks.length) sections.push(current)
+      sawHeading = true
+      current = { key: group.key, label: group.label, blocks: [] }
+      return
+    }
+
+    if (isHeading && !group) {
+      // Unrecognized heading: keep it visible as a sub-heading within the
+      // current section rather than dropping it.
+      current.blocks.push(block)
+      return
+    }
+
+    current.blocks.push(block)
+  })
+  if (current.blocks.length) sections.push(current)
+
+  // Merge sections that share the same key (e.g. multiple "Requirements" headings)
+  const merged = []
+  sections.forEach((section) => {
+    const existing = merged.find((s) => s.key === section.key)
+    if (existing) {
+      existing.blocks.push(...section.blocks)
+    } else {
+      merged.push(section)
+    }
+  })
+
+  return (
+    <div className="mt-3 space-y-6">
+      {(experience || packageInfo) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <QuickFact label="Experience" value={experience} />
+          <QuickFact label="Package" value={packageInfo} />
+        </div>
+      )}
+      {merged.map((section) => (
+        <div key={section.key}>
+          {sawHeading && (
+            <h3 className="text-sm font-semibold uppercase tracking-[0.15em] text-slate-500 dark:text-gray-500">
+              {section.label}
+            </h3>
+          )}
+          <div className={`space-y-3 text-sm leading-7 text-slate-700 dark:text-gray-300 ${sawHeading ? 'mt-2' : ''}`}>
+            {section.blocks.map((block, blockIndex) => renderBlock(block, blockIndex))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function JobDetail() {
   const { jobId } = useParams()
   const navigate = useNavigate()
@@ -81,7 +215,7 @@ export function JobDetail() {
         <section className="space-y-6 text-slate-700 dark:text-gray-300">
           <div>
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Job description</h2>
-            <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700 dark:text-gray-300">{job.description}</p>
+            <JobDescription job={job} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Resume tailoring is disabled; status block commented out.
