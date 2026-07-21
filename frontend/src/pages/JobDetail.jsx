@@ -5,6 +5,7 @@ import { agentApi } from '../api/agentApi.js'
 import { Button } from '../components/ui/Button.jsx'
 import { Badge } from '../components/ui/Badge.jsx'
 import { buildDownloadFilename } from '../utils/formatters.js'
+import { InterviewPrepPreview } from '../components/dashboard/InterviewPrepPreview.jsx'
 
 const HEADING_PATTERN = /^[A-Za-z][A-Za-z0-9 /&'-]{0,60}:$/
 
@@ -146,6 +147,9 @@ export function JobDetail() {
   const location = useLocation()
   const [job, setJob] = useState(null)
   const [error, setError] = useState('')
+  const [interviewPrep, setInterviewPrep] = useState(null)
+  const [interviewPrepLoading, setInterviewPrepLoading] = useState(false)
+  const [interviewPrepError, setInterviewPrepError] = useState('')
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -159,6 +163,32 @@ export function JobDetail() {
 
     fetchJob()
   }, [jobId])
+
+  useEffect(() => {
+    const fetchCachedInterviewPrep = async () => {
+      try {
+        const data = await agentApi.getInterviewPrep(jobId)
+        setInterviewPrep(data.interview_prep)
+      } catch {
+        // No cached prep yet; user can generate it on demand.
+      }
+    }
+
+    fetchCachedInterviewPrep()
+  }, [jobId])
+
+  const handleGenerateInterviewPrep = async () => {
+    setInterviewPrepLoading(true)
+    setInterviewPrepError('')
+    try {
+      const data = await agentApi.generateInterviewPrep(jobId)
+      setInterviewPrep(data.interview_prep)
+    } catch {
+      setInterviewPrepError('Unable to generate interview prep.')
+    } finally {
+      setInterviewPrepLoading(false)
+    }
+  }
 
   const handleDownload = async (filename, label) => {
     try {
@@ -242,6 +272,15 @@ export function JobDetail() {
             </button>
           )}
         </section>
+
+        <div className="mt-6">
+          <InterviewPrepPreview
+            interviewPrep={interviewPrep}
+            loading={interviewPrepLoading}
+            error={interviewPrepError}
+            onGenerate={handleGenerateInterviewPrep}
+          />
+        </div>
       </div>
     </main>
   )

@@ -1,7 +1,7 @@
 """
 State definition for the LangGraph orchestrator.
 """
-from typing import TypedDict, List
+from typing import Dict, Optional, TypedDict, List
 
 
 class AgentState(TypedDict):
@@ -29,3 +29,4 @@ class AgentState(TypedDict):
     tailored_resumes: List[dict]  # List of tailored resume data and file paths
     cover_letter_paths: List[str]  # List of generated cover letter file paths
     validation_stats: dict  # Validation summary counts for job filtering
+    interview_prep: Optional[Dict[str, dict]]  # On-demand interview prep results keyed by job_id (str); not populated automatically

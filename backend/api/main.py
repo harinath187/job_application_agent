@@ -9,7 +9,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import upload, jobs, download, alerts, sessions
+from api.routes import upload, jobs, download, alerts, sessions, interview_prep
 from utils.db import init_db
 from utils.file_helpers import init_directories
 from alerts.scheduler import start_scheduler, stop_scheduler
@@ -61,6 +61,7 @@ app.include_router(jobs.router)
 app.include_router(download.router)
 app.include_router(alerts.router)
 app.include_router(sessions.router)
+app.include_router(interview_prep.router)
 
 
 @app.get("/")

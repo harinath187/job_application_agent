@@ -13,6 +13,7 @@ from agents.relevance_scorer import compute_final_score, compute_role_confidence
 from agents.scraper_agent import run_scraper_agent
 # from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
+from agents.interview_prep_agent import generate_interview_prep
 from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
 from utils.db import (
     insert_job,
@@ -155,6 +156,42 @@ def resume_from_scraper_node(session_id: str, experience_level: str) -> AgentSta
         "cover_letter_paths": [],
     }
     return _run_post_parse_pipeline(state)
+
+
+def interview_prep_node(state: AgentState) -> AgentState:
+    """
+    On-demand node that generates interview prep for a single job.
+
+    Unlike the other nodes, this is NOT wired into build_graph()/_run_post_parse_pipeline
+    — it is only invoked directly (see backend/api/routes/interview_prep.py) when a user
+    explicitly requests prep for one job, to avoid generating it for every scraped job.
+    """
+    jobs = state.get("jobs") or []
+    if not jobs:
+        return state
+    job = jobs[0]
+
+    tailored_resume_summary = None
+    for tailored in state.get("tailored_resumes") or []:
+        if tailored.get("job_id") == job.get("id"):
+            tailored_resume_summary = tailored.get("summary")
+            break
+
+    result = generate_interview_prep(
+        resume_text=state.get("resume_text", ""),
+        extracted_skills=state.get("extracted_skills", []),
+        job=job,
+        tailored_resume_summary=tailored_resume_summary,
+        projects=state.get("projects"),
+        certifications=state.get("certifications"),
+        resume_sections=state.get("resume_sections"),
+        experience_summary=state.get("extracted_experience"),
+    )
+
+    interview_prep = dict(state.get("interview_prep") or {})
+    interview_prep[str(job.get("id"))] = result
+    state["interview_prep"] = interview_prep
+    return state
 
 
 def auto_alert_registration_node(state: AgentState) -> AgentState:

@@ -214,6 +214,35 @@ def init_db() -> None:
             )
         """)
 
+        # Create interview prep table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interview_prep (
+                job_id INTEGER PRIMARY KEY,
+                technical_questions TEXT,
+                behavioral_questions TEXT,
+                resume_specific_questions TEXT,
+                suggested_talking_points TEXT,
+                source TEXT,
+                generated_at TEXT NOT NULL,
+                FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("PRAGMA table_info(interview_prep)")
+        interview_prep_columns = {row[1] for row in cursor.fetchall()}
+        for column, ddl in (
+            ("technical_questions", "ALTER TABLE interview_prep ADD COLUMN technical_questions TEXT"),
+            ("behavioral_questions", "ALTER TABLE interview_prep ADD COLUMN behavioral_questions TEXT"),
+            ("resume_specific_questions", "ALTER TABLE interview_prep ADD COLUMN resume_specific_questions TEXT"),
+            ("suggested_talking_points", "ALTER TABLE interview_prep ADD COLUMN suggested_talking_points TEXT"),
+            ("source", "ALTER TABLE interview_prep ADD COLUMN source TEXT"),
+            ("generated_at", "ALTER TABLE interview_prep ADD COLUMN generated_at TEXT"),
+        ):
+            if column not in interview_prep_columns:
+                try:
+                    cursor.execute(ddl)
+                except Exception:
+                    pass
+
         # Create session alert metadata table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS session_alerts (
@@ -1032,6 +1061,50 @@ def record_notification(user_id: int, alert_job_id: int, channel: str, status: s
                (user_id, alert_job_id, channel, status, error_msg, sent_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (user_id, alert_job_id, channel, status, error_msg, sent_at)
+        )
+        conn.commit()
+
+
+def get_interview_prep_by_job_id(job_id: int) -> Dict[str, Any] | None:
+    """Retrieve a previously generated interview prep result for a job, if cached."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM interview_prep WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["technical_questions"] = _json_decode(data.get("technical_questions")) or []
+        data["behavioral_questions"] = _json_decode(data.get("behavioral_questions")) or []
+        data["resume_specific_questions"] = _json_decode(data.get("resume_specific_questions")) or []
+        data["suggested_talking_points"] = _json_decode(data.get("suggested_talking_points")) or {}
+        return data
+
+
+def upsert_interview_prep(job_id: int, result: Dict[str, Any]) -> None:
+    """Insert or replace the persisted interview prep result for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO interview_prep
+               (job_id, technical_questions, behavioral_questions, resume_specific_questions, suggested_talking_points, source, generated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                   technical_questions = excluded.technical_questions,
+                   behavioral_questions = excluded.behavioral_questions,
+                   resume_specific_questions = excluded.resume_specific_questions,
+                   suggested_talking_points = excluded.suggested_talking_points,
+                   source = excluded.source,
+                   generated_at = excluded.generated_at""",
+            (
+                job_id,
+                _json_encode(result.get("technical_questions") or []),
+                _json_encode(result.get("behavioral_questions") or []),
+                _json_encode(result.get("resume_specific_questions") or []),
+                _json_encode(result.get("suggested_talking_points") or {}),
+                result.get("source"),
+                result.get("generated_at"),
+            )
         )
         conn.commit()
 

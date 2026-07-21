@@ -171,6 +171,26 @@ async function toggleAlerts(payload) {
   }
 }
 
+async function generateInterviewPrep(jobId) {
+  try {
+    const response = await http.post(`/jobs/${jobId}/interview-prep`)
+    return response.data
+  } catch (error) {
+    console.error('generateInterviewPrep error', error)
+    throw error
+  }
+}
+
+async function getInterviewPrep(jobId) {
+  try {
+    const response = await http.get(`/jobs/${jobId}/interview-prep`)
+    return response.data
+  } catch (error) {
+    console.error('getInterviewPrep error', error)
+    throw error
+  }
+}
+
 async function unsubscribe(email) {
   try {
     const response = await http.delete('/alerts/unsubscribe', { params: { email } })
@@ -195,5 +215,7 @@ export const agentApi = {
   getActiveAlertUsers,
   getAlertHistory,
   toggleAlerts,
-  unsubscribe
+  unsubscribe,
+  generateInterviewPrep,
+  getInterviewPrep
 }
