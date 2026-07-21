@@ -138,7 +138,7 @@ def resume_from_scraper_node(session_id: str, experience_level: str) -> AgentSta
         "extracted_skills": parsed_data.get("skills", []),
         "projects": parsed_data.get("projects", []),
         "certifications": parsed_data.get("certifications", []),
-        "inferred_roles": parsed_data.get("inferred_roles", []),
+        "inferred_roles": session_data.get("inferred_roles", []),
         "experience_level": experience_level,
         "extracted_experience_years": parsed_data.get("experience_years", 0),
         "extracted_experience": parsed_data.get("experience"),

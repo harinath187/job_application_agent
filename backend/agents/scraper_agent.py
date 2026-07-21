@@ -30,7 +30,7 @@ REQUEST_DELAY = 1.5
 
 def run_scraper_agent(state: dict[str, Any]) -> dict[str, Any]:
     inferred_roles = _build_role_search_list(state)
-    location = state.get("extracted_location", "").strip()
+    location = (state.get("extracted_location") or "").strip()
     experience_years = state.get("extracted_experience_years", 0)
     experience = state.get("user_experience") or state.get("extracted_experience")
     if not inferred_roles:

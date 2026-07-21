@@ -775,6 +775,8 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
                 )
                 groq_call_succeeded = True
                 response_text = message.choices[0].message.content.strip()
+                if response_text.startswith("```"):
+                    response_text = re.sub(r"^```(?:json)?\s*|\s*```$", "", response_text.strip()).strip()
             except Exception as groq_exc:
                 logger.warning("[pdf_parser] Groq call failed for %s: %s", pdf_path, groq_exc)
                 return _heuristic_resume_parse(resume_text_for_parsing)
