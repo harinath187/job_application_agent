@@ -30,3 +30,4 @@ class AgentState(TypedDict):
     cover_letter_paths: List[str]  # List of generated cover letter file paths
     validation_stats: dict  # Validation summary counts for job filtering
     interview_prep: Optional[Dict[str, dict]]  # On-demand interview prep results keyed by job_id (str); not populated automatically
+    ats_structure_result: Optional[dict]  # Part 1 ATS structural score, computed at upload time (rule-based, no LLM)

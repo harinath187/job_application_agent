@@ -186,7 +186,31 @@ async function getInterviewPrep(jobId) {
     const response = await http.get(`/jobs/${jobId}/interview-prep`)
     return response.data
   } catch (error) {
-    console.error('getInterviewPrep error', error)
+    if (error.response?.status !== 404) {
+      console.error('getInterviewPrep error', error)
+    }
+    throw error
+  }
+}
+
+async function computeAtsMatch(jobId) {
+  try {
+    const response = await http.post(`/jobs/${jobId}/ats-match`)
+    return response.data
+  } catch (error) {
+    console.error('computeAtsMatch error', error)
+    throw error
+  }
+}
+
+async function getAtsMatch(jobId) {
+  try {
+    const response = await http.get(`/jobs/${jobId}/ats-match`)
+    return response.data
+  } catch (error) {
+    if (error.response?.status !== 404) {
+      console.error('getAtsMatch error', error)
+    }
     throw error
   }
 }
@@ -217,5 +241,7 @@ export const agentApi = {
   toggleAlerts,
   unsubscribe,
   generateInterviewPrep,
-  getInterviewPrep
+  getInterviewPrep,
+  computeAtsMatch,
+  getAtsMatch
 }

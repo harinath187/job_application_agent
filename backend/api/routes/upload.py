@@ -53,7 +53,8 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str | None, locatio
             "jobs": [],
             "top_ranked_jobs": [],
             "tailored_resumes": [],
-            "cover_letter_paths": []
+            "cover_letter_paths": [],
+            "ats_structure_result": None
         }
         
         # Run the graph - jobs will be inserted and updated incrementally during execution

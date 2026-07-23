@@ -14,6 +14,7 @@ from agents.scraper_agent import run_scraper_agent
 # from agents.tailor_agent import tailor_resume, save_tailored_resume
 from agents.cover_letter_agent import generate_cover_letter
 from agents.interview_prep_agent import generate_interview_prep
+from utils.ats_scorer import compute_ats_structure_score
 from utils.file_helpers import COVER_LETTERS_DIR, RESUMES_DIR, get_relative_path
 from utils.db import (
     insert_job,
@@ -23,6 +24,7 @@ from utils.db import (
     update_search_history_criteria,
     update_session_parsed_resume_data,
     update_session_validation_stats,
+    update_session_ats_structure_result,
     update_job_status,
     upsert_alert_preference_for_user,
     upsert_alert_user,
@@ -76,9 +78,17 @@ def pdf_parser_node(state: AgentState) -> AgentState:
 
     inferred_roles = infer_roles(state.get("extracted_skills", []), state.get("projects", []))
     state["inferred_roles"] = inferred_roles
+
+    # Part 1 of the ATS Score feature: free, instant, rule-based structural
+    # check that runs on every upload alongside resume parsing (no extra
+    # LLM call, no extra round trip).
+    ats_structure_result = compute_ats_structure_score(state["resume_path"], resume_text).to_dict()
+    state["ats_structure_result"] = ats_structure_result
+
     session_id = state.get("session_id")
     if session_id:
         update_session_parsed_resume_data(session_id, parsed_data)
+        update_session_ats_structure_result(session_id, ats_structure_result)
         update_session_profile_data(
             session_id=session_id,
             projects=state.get("projects", []),

@@ -62,6 +62,11 @@ def init_db() -> None:
                 cursor.execute("ALTER TABLE sessions ADD COLUMN parsed_resume_data TEXT")
             except Exception:
                 pass
+        if "ats_structure_result" not in session_columns:
+            try:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN ats_structure_result TEXT")
+            except Exception:
+                pass
 
         # Create search history table
         cursor.execute("""
@@ -238,6 +243,36 @@ def init_db() -> None:
             ("generated_at", "ALTER TABLE interview_prep ADD COLUMN generated_at TEXT"),
         ):
             if column not in interview_prep_columns:
+                try:
+                    cursor.execute(ddl)
+                except Exception:
+                    pass
+
+        # Create ATS match table (Part 2 of the ATS Score feature: on-demand,
+        # cached per job, mirrors the interview_prep table pattern exactly)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ats_match (
+                job_id INTEGER PRIMARY KEY,
+                matched_keywords TEXT,
+                missing_keywords TEXT,
+                match_score REAL,
+                notes TEXT,
+                source TEXT,
+                generated_at TEXT NOT NULL,
+                FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+            )
+        """)
+        cursor.execute("PRAGMA table_info(ats_match)")
+        ats_match_columns = {row[1] for row in cursor.fetchall()}
+        for column, ddl in (
+            ("matched_keywords", "ALTER TABLE ats_match ADD COLUMN matched_keywords TEXT"),
+            ("missing_keywords", "ALTER TABLE ats_match ADD COLUMN missing_keywords TEXT"),
+            ("match_score", "ALTER TABLE ats_match ADD COLUMN match_score REAL"),
+            ("notes", "ALTER TABLE ats_match ADD COLUMN notes TEXT"),
+            ("source", "ALTER TABLE ats_match ADD COLUMN source TEXT"),
+            ("generated_at", "ALTER TABLE ats_match ADD COLUMN generated_at TEXT"),
+        ):
+            if column not in ats_match_columns:
                 try:
                     cursor.execute(ddl)
                 except Exception:
@@ -598,7 +633,19 @@ def get_session_data(session_id: str) -> Dict[str, Any] | None:
         data["inferred_roles"] = _json_decode(data.get("inferred_roles")) or []
         data["validation_stats"] = _json_decode(data.get("validation_stats")) or {}
         data["parsed_resume_data"] = _json_decode(data.get("parsed_resume_data")) or {}
+        data["ats_structure_result"] = _json_decode(data.get("ats_structure_result")) or None
         return data
+
+
+def update_session_ats_structure_result(session_id: str, ats_structure_result: Dict[str, Any]) -> None:
+    """Persist the Part 1 (structural) ATS score result computed at upload time."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE sessions SET ats_structure_result = ? WHERE session_id = ?",
+            (_json_encode(ats_structure_result), session_id),
+        )
+        conn.commit()
 
 
 def update_session_experience(session_id: str, experience: str | None) -> None:
@@ -1102,6 +1149,50 @@ def upsert_interview_prep(job_id: int, result: Dict[str, Any]) -> None:
                 _json_encode(result.get("behavioral_questions") or []),
                 _json_encode(result.get("resume_specific_questions") or []),
                 _json_encode(result.get("suggested_talking_points") or {}),
+                result.get("source"),
+                result.get("generated_at"),
+            )
+        )
+        conn.commit()
+
+
+def get_ats_match_by_job_id(job_id: int) -> Dict[str, Any] | None:
+    """Retrieve a previously computed ATS match result for a job, if cached."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM ats_match WHERE job_id = ?", (job_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["matched_keywords"] = _json_decode(data.get("matched_keywords")) or []
+        data["missing_keywords"] = _json_decode(data.get("missing_keywords")) or []
+        match_score = data.get("match_score")
+        data["match_score"] = float(match_score) if match_score is not None else 0.0
+        return data
+
+
+def upsert_ats_match(job_id: int, result: Dict[str, Any]) -> None:
+    """Insert or replace the persisted ATS match result for a job."""
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """INSERT INTO ats_match
+               (job_id, matched_keywords, missing_keywords, match_score, notes, source, generated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET
+                   matched_keywords = excluded.matched_keywords,
+                   missing_keywords = excluded.missing_keywords,
+                   match_score = excluded.match_score,
+                   notes = excluded.notes,
+                   source = excluded.source,
+                   generated_at = excluded.generated_at""",
+            (
+                job_id,
+                _json_encode(result.get("matched_keywords") or []),
+                _json_encode(result.get("missing_keywords") or []),
+                float(result.get("match_score")) if result.get("match_score") is not None else 0.0,
+                result.get("notes"),
                 result.get("source"),
                 result.get("generated_at"),
             )

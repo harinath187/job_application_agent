@@ -113,6 +113,7 @@ async def search_history_item(session_id: str) -> JSONResponse:
                 "status": session_status,
                 "session_status": session_status,
                 "validation_stats": session_data.get("validation_stats", {}),
+                "ats_structure_result": session_data.get("ats_structure_result"),
                 **alert_status
             }
         )
@@ -169,10 +170,11 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                     "status": status_message,
                     "session_status": session_status,
                     "validation_stats": session_data.get("validation_stats", {}),
+                    "ats_structure_result": session_data.get("ats_structure_result"),
                     **alert_status
                 }
             )
-        
+
         # Format response
         job_list = []
         for job in jobs:
@@ -210,10 +212,11 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "status": status_message,
                 "session_status": session_status,
                 "validation_stats": session_data.get("validation_stats", {}),
+                "ats_structure_result": session_data.get("ats_structure_result"),
                 **alert_status
             }
         )
-    
+
     except Exception as e:
         logger.error(f"Error retrieving jobs for session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Error retrieving jobs")

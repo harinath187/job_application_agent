@@ -80,6 +80,7 @@ export function JobAgentProvider({ children }) {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState('')
   const [alertInfo, setAlertInfo] = useState({ alertsEnabled: false, alertEmail: null, alertMessage: '', alertDisabledByUser: false })
+  const [atsStructureResult, setAtsStructureResult] = useState(null)
   const [theme, setTheme] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.localStorage.getItem('theme') || 'dark'
@@ -147,6 +148,9 @@ export function JobAgentProvider({ children }) {
         setIsProcessing(backendStatus === 'processing')
         setError('')
         setAlertInfo(nextAlertInfo)
+        if (data.ats_structure_result) {
+          setAtsStructureResult(data.ats_structure_result)
+        }
         persistSession({ sessionId: currentSessionId, jobs: jobsData, status: processingStatus, isProcessing: backendStatus === 'processing', alertInfo: nextAlertInfo })
 
         if (backendStatus === 'needs_experience_input') {
@@ -335,6 +339,7 @@ export function JobAgentProvider({ children }) {
       isProcessing,
       error,
       alertInfo,
+      atsStructureResult,
       theme,
       startAgent,
       stopAgent,
@@ -345,7 +350,7 @@ export function JobAgentProvider({ children }) {
       refreshAlertStatus,
       toggleTheme
     }),
-    [sessionId, jobs, status, isProcessing, error, alertInfo, theme, startAgent, stopAgent, loadSession, clearSessionStorage, handleDownload, submitExperienceLevel, refreshAlertStatus, toggleTheme]
+    [sessionId, jobs, status, isProcessing, error, alertInfo, atsStructureResult, theme, startAgent, stopAgent, loadSession, clearSessionStorage, handleDownload, submitExperienceLevel, refreshAlertStatus, toggleTheme]
   )
 
   return (

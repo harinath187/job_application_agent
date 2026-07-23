@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button.jsx'
 import { Badge } from '../components/ui/Badge.jsx'
 import { buildDownloadFilename } from '../utils/formatters.js'
 import { InterviewPrepPreview } from '../components/dashboard/InterviewPrepPreview.jsx'
+import { ATSMatchPreview } from '../components/dashboard/ATSMatchPreview.jsx'
 
 const HEADING_PATTERN = /^[A-Za-z][A-Za-z0-9 /&'-]{0,60}:$/
 
@@ -150,6 +151,9 @@ export function JobDetail() {
   const [interviewPrep, setInterviewPrep] = useState(null)
   const [interviewPrepLoading, setInterviewPrepLoading] = useState(false)
   const [interviewPrepError, setInterviewPrepError] = useState('')
+  const [atsMatch, setAtsMatch] = useState(null)
+  const [atsMatchLoading, setAtsMatchLoading] = useState(false)
+  const [atsMatchError, setAtsMatchError] = useState('')
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -177,6 +181,19 @@ export function JobDetail() {
     fetchCachedInterviewPrep()
   }, [jobId])
 
+  useEffect(() => {
+    const fetchCachedAtsMatch = async () => {
+      try {
+        const data = await agentApi.getAtsMatch(jobId)
+        setAtsMatch(data.ats_match)
+      } catch {
+        // No cached ATS match yet; user can check it on demand.
+      }
+    }
+
+    fetchCachedAtsMatch()
+  }, [jobId])
+
   const handleGenerateInterviewPrep = async () => {
     setInterviewPrepLoading(true)
     setInterviewPrepError('')
@@ -187,6 +204,19 @@ export function JobDetail() {
       setInterviewPrepError('Unable to generate interview prep.')
     } finally {
       setInterviewPrepLoading(false)
+    }
+  }
+
+  const handleCheckAtsMatch = async () => {
+    setAtsMatchLoading(true)
+    setAtsMatchError('')
+    try {
+      const data = await agentApi.computeAtsMatch(jobId)
+      setAtsMatch(data.ats_match)
+    } catch {
+      setAtsMatchError('Unable to check ATS match.')
+    } finally {
+      setAtsMatchLoading(false)
     }
   }
 
@@ -272,6 +302,15 @@ export function JobDetail() {
             </button>
           )}
         </section>
+
+        <div className="mt-6">
+          <ATSMatchPreview
+            atsMatch={atsMatch}
+            loading={atsMatchLoading}
+            error={atsMatchError}
+            onCheck={handleCheckAtsMatch}
+          />
+        </div>
 
         <div className="mt-6">
           <InterviewPrepPreview

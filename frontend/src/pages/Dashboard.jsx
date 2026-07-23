@@ -5,13 +5,14 @@ import { StatusBar } from '../components/dashboard/StatusBar.jsx'
 import { JobCard } from '../components/dashboard/JobCard.jsx'
 import { AlertOptIn } from '../components/dashboard/AlertOptIn.jsx'
 import { Button } from '../components/ui/Button.jsx'
+import { ATSScoreBadge } from '../components/ui/ATSScoreBadge.jsx'
 import { useJobAgent } from '../hooks/useJobAgent.jsx'
 
 export function Dashboard() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const jobReferenceId = searchParams.get('jobReferenceId')
-  const { sessionId, jobs, status, error, alertInfo, isProcessing, stopAgent, loadSession, handleDownload, submitExperienceLevel, refreshAlertStatus } = useJobAgent()
+  const { sessionId, jobs, status, error, alertInfo, atsStructureResult, isProcessing, stopAgent, loadSession, handleDownload, submitExperienceLevel, refreshAlertStatus } = useJobAgent()
 
   const jobsComplete = useMemo(() => jobs.filter((job) => job.status === 'complete' || job.status === 'completed').length, [jobs])
   const sortedJobs = useMemo(() => {
@@ -68,6 +69,29 @@ export function Dashboard() {
 
           <StatusBar status={status} jobsTotal={jobs.length} jobsComplete={jobsComplete} />
           {error && <div className="rounded-3xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 p-4 text-sm text-red-700 dark:text-red-200">{error}</div>}
+          {atsStructureResult && (
+            <div className="rounded-3xl border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-lg shadow-black/5 dark:shadow-black/20">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.24em] text-slate-500 dark:text-gray-500">Resume ATS check</p>
+                  <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">How ATS-friendly is your resume?</h3>
+                </div>
+                <ATSScoreBadge score={atsStructureResult.score} />
+              </div>
+              {atsStructureResult.is_likely_scanned && (
+                <p className="mt-3 text-sm text-red-600 dark:text-red-300">
+                  Your resume looks like a scanned image or non-machine-readable PDF; most ATS systems cannot read it at all.
+                </p>
+              )}
+              {atsStructureResult.failed_checks?.length > 0 && (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-gray-400">
+                  {atsStructureResult.failed_checks.map((check) => (
+                    <li key={check.check_name}>{check.message}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {needsExperienceInput && (
             <div className="rounded-3xl border border-amber-500/30 bg-amber-100 dark:bg-amber-950/40 p-5 text-amber-900 dark:text-amber-50">
               <h2 className="text-lg font-semibold">Pick your experience level</h2>
