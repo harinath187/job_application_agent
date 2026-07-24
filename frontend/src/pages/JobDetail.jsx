@@ -7,6 +7,7 @@ import { Badge } from '../components/ui/Badge.jsx'
 import { buildDownloadFilename } from '../utils/formatters.js'
 import { InterviewPrepPreview } from '../components/dashboard/InterviewPrepPreview.jsx'
 import { ATSMatchPreview } from '../components/dashboard/ATSMatchPreview.jsx'
+import { AutofillPanel } from '../components/dashboard/AutofillPanel.jsx'
 
 const HEADING_PATTERN = /^[A-Za-z][A-Za-z0-9 /&'-]{0,60}:$/
 
@@ -154,6 +155,10 @@ export function JobDetail() {
   const [atsMatch, setAtsMatch] = useState(null)
   const [atsMatchLoading, setAtsMatchLoading] = useState(false)
   const [atsMatchError, setAtsMatchError] = useState('')
+  const [autofillSupported, setAutofillSupported] = useState(false)
+  const [autofillResult, setAutofillResult] = useState(null)
+  const [autofillLoading, setAutofillLoading] = useState(false)
+  const [autofillError, setAutofillError] = useState('')
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -194,6 +199,19 @@ export function JobDetail() {
     fetchCachedAtsMatch()
   }, [jobId])
 
+  useEffect(() => {
+    const fetchAutofillSupport = async () => {
+      try {
+        const data = await agentApi.getAutofillSupport(jobId)
+        setAutofillSupported(Boolean(data.supported))
+      } catch {
+        setAutofillSupported(false)
+      }
+    }
+
+    fetchAutofillSupport()
+  }, [jobId])
+
   const handleGenerateInterviewPrep = async () => {
     setInterviewPrepLoading(true)
     setInterviewPrepError('')
@@ -217,6 +235,19 @@ export function JobDetail() {
       setAtsMatchError('Unable to check ATS match.')
     } finally {
       setAtsMatchLoading(false)
+    }
+  }
+
+  const handleAutofill = async () => {
+    setAutofillLoading(true)
+    setAutofillError('')
+    try {
+      const data = await agentApi.runAutofill(jobId)
+      setAutofillResult(data)
+    } catch {
+      setAutofillError('Unable to autofill this application.')
+    } finally {
+      setAutofillLoading(false)
     }
   }
 
@@ -311,6 +342,17 @@ export function JobDetail() {
             onCheck={handleCheckAtsMatch}
           />
         </div>
+
+        {autofillSupported && (
+          <div className="mt-6">
+            <AutofillPanel
+              result={autofillResult}
+              loading={autofillLoading}
+              error={autofillError}
+              onAutofill={handleAutofill}
+            />
+          </div>
+        )}
 
         <div className="mt-6">
           <InterviewPrepPreview

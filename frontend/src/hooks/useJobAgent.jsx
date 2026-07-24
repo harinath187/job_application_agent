@@ -167,6 +167,15 @@ export function JobAgentProvider({ children }) {
           return
         }
 
+        if (backendStatus === 'failed') {
+          setStatus('Processing failed')
+          setError(data.error_message || 'Processing failed. Please try again.')
+          setIsProcessing(false)
+          clearPolling()
+          persistSession({ status: 'Processing failed', isProcessing: false })
+          return
+        }
+
         const allComplete = backendStatus === 'completed'
         if (allComplete) {
           setStatus('Complete!')

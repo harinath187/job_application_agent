@@ -56,7 +56,7 @@ export function Dashboard() {
               <div>
                 <p className="text-sm uppercase tracking-[0.28em] text-indigo-600 dark:text-indigo-300">Pipeline overview</p>
                 <h1 className="mt-3 text-3xl font-semibold text-indigo-600 dark:text-indigo-300">Processing your tailored applications</h1>
-                <p className="mt-3 max-w-2xl text-slate-600 dark:text-gray-400">This page polls the backend for live updates as the agent sources jobs, tailors resumes, and generates cover letters.</p>
+                <p className="mt-3 max-w-2xl text-slate-600 dark:text-gray-400">This page polls the backend for live updates as the agent sources jobs, generates cover letters.</p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 {isProcessing && (

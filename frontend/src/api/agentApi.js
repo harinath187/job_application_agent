@@ -215,6 +215,26 @@ async function getAtsMatch(jobId) {
   }
 }
 
+async function getAutofillSupport(jobId) {
+  try {
+    const response = await http.get(`/jobs/${jobId}/autofill-support`)
+    return response.data
+  } catch (error) {
+    console.error('getAutofillSupport error', error)
+    throw error
+  }
+}
+
+async function runAutofill(jobId) {
+  try {
+    const response = await http.post(`/jobs/${jobId}/autofill`)
+    return response.data
+  } catch (error) {
+    console.error('runAutofill error', error)
+    throw error
+  }
+}
+
 async function unsubscribe(email) {
   try {
     const response = await http.delete('/alerts/unsubscribe', { params: { email } })
@@ -243,5 +263,7 @@ export const agentApi = {
   generateInterviewPrep,
   getInterviewPrep,
   computeAtsMatch,
-  getAtsMatch
+  getAtsMatch,
+  getAutofillSupport,
+  runAutofill
 }

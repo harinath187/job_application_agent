@@ -67,6 +67,11 @@ def init_db() -> None:
                 cursor.execute("ALTER TABLE sessions ADD COLUMN ats_structure_result TEXT")
             except Exception:
                 pass
+        if "error_message" not in session_columns:
+            try:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN error_message TEXT")
+            except Exception:
+                pass
 
         # Create search history table
         cursor.execute("""
@@ -557,25 +562,32 @@ def update_job_status(job_id: int, status: str, resume_path: str = None, cover_l
         conn.commit()
 
 
-def update_session_status(session_id: str, status: str) -> None:
+def update_session_status(session_id: str, status: str, error_message: str | None = None) -> None:
     """
     Update session processing status.
 
     Args:
         session_id: Session identifier
         status: New status (e.g., "complete", "failed")
+        error_message: Optional error detail to store when status is a failure state
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE sessions SET status = ? WHERE session_id = ?",
-            (status, session_id)
-        )
+        if error_message is not None:
+            cursor.execute(
+                "UPDATE sessions SET status = ?, error_message = ? WHERE session_id = ?",
+                (status, error_message, session_id)
+            )
+        else:
+            cursor.execute(
+                "UPDATE sessions SET status = ? WHERE session_id = ?",
+                (status, session_id)
+            )
         conn.commit()
 
 
-def set_session_status(session_id: str, status: str) -> None:
-    update_session_status(session_id, status)
+def set_session_status(session_id: str, status: str, error_message: str | None = None) -> None:
+    update_session_status(session_id, status, error_message)
 
 
 def update_session_profile_data(

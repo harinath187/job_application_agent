@@ -69,8 +69,8 @@ def run_agent_pipeline(session_id: str, pdf_path: str, role: str | None, locatio
             logger.info(f"Session {session_id} completed successfully")
     
     except Exception as e:
-        logger.error(f"Error in agent pipeline for session {session_id}: {e}")
-        update_session_status(session_id, "failed")
+        logger.exception(f"Error in agent pipeline for session {session_id}: {e}")
+        update_session_status(session_id, "failed", error_message=str(e))
 
 
 @router.post("/upload")

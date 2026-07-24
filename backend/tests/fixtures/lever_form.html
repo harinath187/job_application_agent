@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <form class="application-form">
+    <div class="application-question">
+      <label>Full name</label>
+      <input type="text" name="name" />
+    </div>
+    <div class="application-question">
+      <label>Email</label>
+      <input type="email" name="email" />
+    </div>
+    <div class="application-question">
+      <label>Phone</label>
+      <input type="tel" name="phone" />
+    </div>
+    <div class="application-file-input">
+      <input type="file" name="resume" />
+    </div>
+    <div class="application-question">
+      <label>LinkedIn URL</label>
+      <input type="text" name="urls[LinkedIn]" />
+    </div>
+    <div class="application-question">
+      <label>Do you require visa sponsorship?</label>
+      <select name="cards[sponsorship]"><option value="yes">Yes</option><option value="no">No</option></select>
+    </div>
+    <button type="submit" class="submit-application">Submit</button>
+  </form>
+</body>
+</html>

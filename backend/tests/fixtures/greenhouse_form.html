@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <form id="application_form">
+    <input type="text" id="first_name" name="job_application[first_name]" />
+    <input type="text" id="last_name" name="job_application[last_name]" />
+    <input type="email" id="email" name="job_application[email]" />
+    <input type="tel" id="phone" name="job_application[phone]" />
+    <div id="resume">
+      <input type="file" name="resume" />
+    </div>
+    <div id="cover_letter">
+      <input type="file" name="cover_letter" />
+    </div>
+    <input type="text" id="linked_in" aria-label="LinkedIn Profile" />
+    <div id="custom_fields">
+      <div class="field">
+        <label>Are you willing to relocate?</label>
+        <input type="text" name="job_application[answers][relocate]" />
+      </div>
+      <div class="field">
+        <label>Why do you want to work here?</label>
+        <textarea name="job_application[answers][why]"></textarea>
+      </div>
+    </div>
+    <button type="submit" id="submit_app">Submit Application</button>
+  </form>
+</body>
+</html>

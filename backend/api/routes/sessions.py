@@ -25,11 +25,13 @@ class ExperienceUpdateRequest(BaseModel):
 def _resume_pipeline(session_id: str, experience_level: str) -> None:
     try:
         result = resume_from_scraper_node(session_id, experience_level)
-        final_status = "completed" if result.get("jobs") else "failed"
-        set_session_status(session_id, final_status)
-        logger.info("Resumed session %s completed with status %s", session_id, final_status)
+        if result.get("jobs"):
+            set_session_status(session_id, "completed")
+        else:
+            set_session_status(session_id, "failed", error_message="No jobs found after resuming pipeline.")
+        logger.info("Resumed session %s completed with status %s", session_id, "completed" if result.get("jobs") else "failed")
     except Exception as exc:
-        set_session_status(session_id, "failed")
+        set_session_status(session_id, "failed", error_message=str(exc))
         logger.exception("Failed to resume session %s: %s", session_id, exc)
 
 

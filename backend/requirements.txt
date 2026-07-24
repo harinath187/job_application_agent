@@ -16,3 +16,5 @@ python-multipart>=0.0.9
 apscheduler>=3.10
 email-validator>=2.0
 rapidfuzz>=3.0
+# Application Autofill Assist (Greenhouse/Lever only, never submits - see backend/automation/__init__.py)
+playwright>=1.44

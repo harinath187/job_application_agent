@@ -171,6 +171,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                     "session_status": session_status,
                     "validation_stats": session_data.get("validation_stats", {}),
                     "ats_structure_result": session_data.get("ats_structure_result"),
+                    "error_message": session_data.get("error_message"),
                     **alert_status
                 }
             )
@@ -213,6 +214,7 @@ async def get_jobs(session_id: str = Query(..., description="Session ID")) -> JS
                 "session_status": session_status,
                 "validation_stats": session_data.get("validation_stats", {}),
                 "ats_structure_result": session_data.get("ats_structure_result"),
+                "error_message": session_data.get("error_message"),
                 **alert_status
             }
         )
