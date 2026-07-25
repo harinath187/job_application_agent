@@ -142,7 +142,8 @@ async function deleteSearchHistoryItem(sessionId) {
 async function deleteSearchHistoryItems(sessionIds) {
   try {
     const response = await http.delete('/search-history', {
-      params: { session_ids: sessionIds }
+      params: { session_ids: sessionIds },
+      paramsSerializer: { indexes: null }
     })
     return response.data
   } catch (error) {

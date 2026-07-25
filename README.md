@@ -15,9 +15,12 @@ Job Application Agent is an AI-powered job application automation system that he
 
 ## Features
 - Resume upload and parsing (PDF)
-- Job scraping and filtering (optional SerpApi)
+- Job scraping and filtering (optional SerpApi) with ATS-aware job fetching
 - Resume tailoring per job (PDF output)
 - Cover letter generation (DOCX output)
+- ATS match scoring - resume-to-job fit preview with a score badge in the dashboard
+- Interview prep agent - generates likely interview questions and prep notes per job
+- Application Autofill Assist - detects Greenhouse/Lever ATS platforms and autofills application forms via a non-headless Playwright browser (never auto-submits)
 - Session and job tracking (SQLite)
 - Email and Telegram alert subscription management
 - Search History and Manage Alerts pages for reviewing prior runs and notification logs
@@ -36,6 +39,8 @@ flowchart LR
         Scrape["Job Scraper"]
         Tailor["Resume Tailor"]
         CL["Cover Letter Generator"]
+        ATS["ATS Match Scorer"]
+        Prep["Interview Prep Agent"]
     end
 
     Orch --> PDF
@@ -46,23 +51,40 @@ flowchart LR
     Tailor --> Resumes["outputs/resumes"]
     CL --> Letters["outputs/cover_letters"]
 
+    API --> ATS
+    API --> Prep
+    API --> Auto["Automation Runner"]
+    Auto --> Detect["Platform Detector"]
+    Auto --> Adapters["Greenhouse/Lever Adapters"]
+
     API --> DB["SQLite Database"]
     API --> Download["Download API"]
 ```
 
 ## Component Descriptions
-- `backend/api/main.py` - FastAPI app entrypoint, CORS, and lifespan lifecycle.
+- `backend/api/main.py` - FastAPI app entrypoint, CORS, and lifespan lifecycle (starts DB, directories, and alert scheduler).
 - `backend/api/routes/upload.py` - Upload endpoint; starts the background pipeline and inserts a session record.
-- `backend/api/routes/jobs.py` - Retrieves jobs for a session and exposes the job detail endpoint.
+- `backend/api/routes/jobs.py` - Retrieves jobs for a session, job detail, and search-history endpoints.
+- `backend/api/routes/sessions.py` - Adds resume experience/context to an existing session.
 - `backend/api/routes/download.py` - Serves generated files with path-safety checks.
 - `backend/api/routes/alerts.py` - Alert subscription, notification history, and preference management endpoints.
+- `backend/api/routes/ats_match.py` - Computes and retrieves ATS resume-to-job match scores.
+- `backend/api/routes/interview_prep.py` - Generates and retrieves interview prep content for a job.
+- `backend/api/routes/automation.py` - Checks autofill platform support and triggers the autofill runner for a job.
 - `backend/alerts/job_checker.py` - Daily scheduler that fetches matching jobs and dispatches email/Telegram alerts.
 - `backend/alerts/notifier_email.py` - Sends multipart plain-text plus HTML email digests for new job matches.
 - `backend/orchestrator/graph.py` - Builds the LangGraph pipeline coordinating agents.
 - `backend/agents/pdf_parser.py` - Extracts text and structured resume data (Groq optional, heuristic fallback).
 - `backend/agents/scraper_agent.py` - Fetches and normalizes job listings using SerpApi (optional).
+- `backend/agents/ats_job_fetcher.py` - Fetches ATS-hosted job postings for scoring/autofill flows.
 - `backend/agents/tailor_agent.py` - Tailors resume content and writes tailored PDFs (ReportLab).
 - `backend/agents/cover_letter_agent.py` - Generates cover letters (.docx) with advanced prompt or fallback template.
+- `backend/agents/interview_prep_agent.py` - Produces interview questions/prep notes from job + resume context.
+- `backend/agents/relevance_scorer.py` / `skill_extractor.py` / `role_inferrer.py` / `job_validator.py` - Support scoring, skill extraction, role inference, and job-listing validation.
+- `backend/utils/ats_scorer.py` - Computes resume-to-job ATS match scores.
+- `backend/automation/platform_detector.py` - Detects the ATS platform (Greenhouse/Lever) for a job URL.
+- `backend/automation/runner.py` - Launches a non-headless Playwright browser and delegates form filling to the matching adapter; never submits.
+- `backend/automation/adapters/` - `greenhouse.py` and `lever.py` adapters implementing platform-specific form fill logic.
 - `backend/utils/db.py` - SQLite helpers and schema initialization (`backend/data/jobs.db`).
 - `backend/utils/file_helpers.py` - Output directory initialization, filename sanitization, and safe path helpers.
 
@@ -76,17 +98,22 @@ flowchart LR
 ## Technology Stack
 - Frontend: React 18, Vite, Axios, Tailwind CSS
 - Backend: Python, FastAPI, Uvicorn
-- Agents: Groq (optional LLM client), pypdf, reportlab, python-docx, requests
+- Agents: Groq (optional LLM client), pypdf/pymupdf, reportlab, python-docx, requests, httpx
+- Automation: Playwright (Application Autofill Assist)
+- Scheduling: APScheduler (daily alert digests)
 - Database: SQLite (local)
 
 ## Project Structure
 - `backend/` - backend application and agents
-  - `api/` - FastAPI app and routes
-  - `agents/` - `pdf_parser.py`, `scraper_agent.py`, `tailor_agent.py`, `cover_letter_agent.py`
+  - `api/` - FastAPI app and `routes/` (upload, jobs, sessions, download, alerts, ats_match, interview_prep, automation)
+  - `agents/` - `pdf_parser.py`, `scraper_agent.py`, `ats_job_fetcher.py`, `tailor_agent.py`, `cover_letter_agent.py`, `interview_prep_agent.py`, `relevance_scorer.py`, `skill_extractor.py`, `role_inferrer.py`, `job_validator.py`
+  - `automation/` - `platform_detector.py`, `runner.py`, `adapters/` (`greenhouse.py`, `lever.py`)
   - `orchestrator/` - graph and state
-  - `utils/` - `db.py`, `file_helpers.py`
+  - `alerts/` - `scheduler.py`, `job_checker.py`, `notifier_email.py`, `notifier_telegram.py`, `cleanup.py`
+  - `utils/` - `db.py`, `file_helpers.py`, `ats_scorer.py`, `groq_client.py`
   - `outputs/` - runtime-generated `resumes/` and `cover_letters/`
   - `data/` - runtime SQLite DB file `jobs.db`
+  - `tests/` - pytest suite covering agents, routes, adapters, and utils
   - `run.py` - helper script to start the server
   - `requirements.txt` - Python dependencies
 - `frontend/` - React + Vite application
@@ -169,6 +196,9 @@ npm run dev
 - `POST /api/upload` - Upload PDF resume and start processing.
 - `GET /api/jobs?session_id=<id>` - Get list of jobs for a session.
 - `GET /api/jobs/{job_id}` - Get job details.
+- `GET /api/search-history` / `GET /api/search-history/{session_id}` - List or fetch prior search sessions.
+- `DELETE /api/search-history/{session_id}` / `DELETE /api/search-history` - Delete one or all search history entries.
+- `POST /api/sessions/{session_id}/experience` - Add resume experience/context to a session.
 - `GET /api/download?file=<filename>` - Download generated file.
 - `POST /api/alerts/subscribe` - Create a new email/Telegram alert preference.
 - `PUT /api/alerts/preferences/{pref_id}` - Update an existing alert preference.
@@ -178,6 +208,12 @@ npm run dev
 - `DELETE /api/alerts/unsubscribe` - Remove a user from alert notifications.
 - `GET /api/alerts/active-users` - List active alert users.
 - `GET /api/alerts/history?email=<address>` - Retrieve notification history for an alert email.
+- `POST /api/jobs/{job_id}/ats-match` - Compute an ATS resume-to-job match score.
+- `GET /api/jobs/{job_id}/ats-match` - Retrieve a previously computed ATS match score.
+- `POST /api/jobs/{job_id}/interview-prep` - Generate interview prep content for a job.
+- `GET /api/jobs/{job_id}/interview-prep` - Retrieve generated interview prep content.
+- `GET /api/jobs/{job_id}/autofill-support` - Check whether autofill is supported (Greenhouse/Lever) for a job.
+- `POST /api/jobs/{job_id}/autofill` - Launch the Application Autofill Assist runner for a job.
 
 Additional service endpoints exposed by the backend:
 - `GET /` - API health and endpoint summary.
@@ -203,9 +239,8 @@ curl -F "file=@./my_resume.pdf" -F "role=Software Engineer" -F "location=United 
 - Rate limiting: simple delays in orchestrator; more robust backoff strategies recommended for production.
 
 ## Future Enhancements
-- ATS scoring and optimization
-- Interview preparation agent
-- Auto-application submission integrations
+- Broader ATS platform coverage beyond Greenhouse/Lever for autofill
+- Auto-application submission (currently autofill-only, never submits)
 - Analytics dashboard and job recommendation engine
 
 ## Security Considerations
