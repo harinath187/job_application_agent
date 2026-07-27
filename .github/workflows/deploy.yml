@@ -97,7 +97,7 @@ jobs:
           file: ./frontend/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           build-args: |
-            VITE_API_URL=${{ vars.VITE_API_URL || 'http://localhost:8000' }}
+            VITE_API_URL=${{ vars.VITE_API_URL || format('http://{0}:8000', secrets.EC2_HOST) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
