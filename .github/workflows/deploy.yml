@@ -121,7 +121,7 @@ jobs:
           envs: GHCR_REPOSITORY,GHCR_ACTOR,GHCR_TOKEN
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH }}
+            cd /home/ubuntu/job_application_agent
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
             GHCR_REPOSITORY="$GHCR_REPOSITORY" docker compose -f docker-compose.prod.yml pull
             GHCR_REPOSITORY="$GHCR_REPOSITORY" docker compose -f docker-compose.prod.yml up -d --remove-orphans
