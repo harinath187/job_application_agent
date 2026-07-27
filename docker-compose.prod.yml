@@ -1,0 +1,19 @@
+services:
+  backend:
+    image: ghcr.io/${GHCR_REPOSITORY}/backend:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - backend/.env
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/outputs:/app/outputs
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/${GHCR_REPOSITORY}/frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
