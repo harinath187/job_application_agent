@@ -2,9 +2,9 @@ name: Build and Push Docker Images
 
 on:
   push:
-    branches: [main]
+    branches: [V2]
   pull_request:
-    branches: [main]
+    branches: [V2]
   workflow_dispatch:
 
 env:
@@ -46,7 +46,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ needs.set-vars.outputs.repo }}/backend
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/V2' }}
             type=sha,format=short
 
       - name: Build and push backend image
@@ -87,7 +87,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ needs.set-vars.outputs.repo }}/frontend
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/V2' }}
             type=sha,format=short
 
       - name: Build and push frontend image
@@ -105,7 +105,7 @@ jobs:
 
   deploy:
     needs: [set-vars, build-backend, build-frontend]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/V2' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
