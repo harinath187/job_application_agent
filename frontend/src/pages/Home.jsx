@@ -80,7 +80,7 @@ export function Home() {
           <div className="max-w-2xl space-y-4">
             <p className="text-sm uppercase tracking-[0.28em] text-indigo-600 dark:text-indigo-300">Career assistant</p>
             <h1 className="text-4xl font-semibold text-slate-900 dark:text-white sm:text-5xl">Tailored job applications in minutes.</h1>
-            <p className="text-base leading-8 text-slate-600 dark:text-gray-400">Upload your resume and let the agent generate customized resumes and cover letters for relevant roles. Track progress in real time and download the final application files.</p>
+            <p className="text-base leading-8 text-slate-600 dark:text-gray-400">Upload your resume and let cover letters for relevant roles. Track progress in real time and download the final application files.</p>
           </div>
           <div className="rounded-[2rem] border border-slate-200 dark:border-gray-800 bg-slate-50 dark:bg-gray-900 p-8 text-center shadow-xl shadow-black/5 dark:shadow-black/20">
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Ready to start?</h2>
