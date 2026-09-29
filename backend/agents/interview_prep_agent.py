@@ -19,6 +19,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 
 def get_groq_client() -> Groq:
@@ -291,7 +292,7 @@ def generate_interview_prep(
         logger.info("Calling Groq for interview prep: job_id=%s", job_id)
         message = call_groq_with_retry(
             client,
-            model="llama-3.1-8b-instant",
+            model=GROQ_MODEL,
             max_tokens=1800,
             temperature=0.4,
             messages=[{"role": "user", "content": prompt}],

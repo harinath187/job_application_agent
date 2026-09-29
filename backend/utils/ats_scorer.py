@@ -48,6 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # Standard resume section headers an ATS-friendly resume is expected to contain
 # at least a few of. Kept as a small local list rather than importing the
@@ -357,7 +358,7 @@ def compute_ats_match_score(resume_text: str, extracted_skills: List[str], job_d
         prompt = _build_ats_match_prompt(resume_text or "", job_description or "", overlap.matched_skills, overlap.missing_skills)
         message = call_groq_with_retry(
             client,
-            model="llama-3.1-8b-instant",
+            model=GROQ_MODEL,
             max_tokens=300,
             temperature=0.2,
             messages=[{"role": "user", "content": prompt}],

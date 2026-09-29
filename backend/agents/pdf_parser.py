@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Read Groq API key from environment at runtime.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 
 def get_groq_client() -> Groq:
@@ -764,7 +765,7 @@ def parse_resume(pdf_path: str) -> Dict[str, Any]:
             try:
                 message = call_groq_with_retry(
                     client,
-                    model="llama-3.1-8b-instant",
+                    model=GROQ_MODEL,
                     max_tokens=1024,
                     messages=[
                         {

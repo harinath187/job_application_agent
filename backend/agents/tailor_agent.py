@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Read Groq API key at runtime.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 
 def get_groq_client() -> Groq:
@@ -187,7 +188,7 @@ Return ONLY valid JSON with keys summary, skills. Do not include any text outsid
 
             message = call_groq_with_retry(
                 client,
-                model="llama-3.1-8b-instant",
+                model=GROQ_MODEL,
                 max_tokens=900,
                 temperature=0.3,
                 messages=[{"role": "user", "content": prompt}],

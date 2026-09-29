@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # Read Groq API key at runtime.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 
 def get_groq_client() -> Groq:
@@ -222,7 +223,7 @@ def generate_cover_letter(
             
             message = call_groq_with_retry(
                 client,
-                model="llama-3.1-8b-instant",  # FIXED: Replace decommissioned llama3-8b-8192 model.
+                model=GROQ_MODEL,
                 max_tokens=2000,
                 temperature=0.3,  # Lower temperature for consistency
                 messages=[

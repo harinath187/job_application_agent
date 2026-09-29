@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Read Groq API key from environment at runtime.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 
 FUZZY_MATCH_THRESHOLD = int(os.getenv("SKILL_FUZZY_MATCH_THRESHOLD", "85"))
 
@@ -194,7 +195,7 @@ def _extract_required_skills_uncached(job_description: str) -> list[str]:
     try:
         message = call_groq_with_retry(
             client,
-            model="llama-3.1-8b-instant",
+            model=GROQ_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": _build_skill_extraction_prompt(job_description)}],
         )
